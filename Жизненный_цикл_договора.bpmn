@@ -1,0 +1,510 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" 
+                   xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" 
+                   xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" 
+                   xmlns:di="http://www.omg.org/spec/DD/20100524/DI" 
+                   xmlns:camunda="http://camunda.org/schema/1.0/bpmn" 
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+                   id="Definitions_1" 
+                   targetNamespace="http://bpmn.io/schema/bpmn" 
+                   exporter="Camunda Modeler" 
+                   exporterVersion="5.0.0">
+  
+  <bpmn:collaboration id="Collaboration_Contract_Lifecycle">
+    <bpmn:participant id="Participant_Contract" name="Жизненный цикл договора ПАО «Авиакомпания «ЮТэйр»" processRef="Process_Contract_Lifecycle" />
+  </bpmn:collaboration>
+  
+  <bpmn:process id="Process_Contract_Lifecycle" name="Процесс жизненного цикла договора" isExecutable="true">
+    
+    <!-- Определение дорожек (Lanes) -->
+    <bpmn:laneSet id="LaneSet_1">
+      <bpmn:lane id="Lane_RPFM" name="Руководитель ПФМ (РПФМ)">
+        <bpmn:flowNodeRef>StartEvent_InitiateContract</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_CheckBudget</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_SignContract</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_ChangeStatusActive</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_MonitorExecution</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_CheckChangesNeeded</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_ObligationsCompleted</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_InitiateClaims</bpmn:flowNodeRef>
+      </bpmn:lane>
+      
+      <bpmn:lane id="Lane_OSD" name="Ответственный сотрудник по договору (ОСД)">
+        <bpmn:flowNodeRef>Task_PrepareDraft</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_CollectCounterpartyDocs</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_CheckDocsAvailable</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_PlaceForApproval</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_HandleComments</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_PrepareForSigning</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_ScanAndUpload</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_InitiateArchiving</bpmn:flowNodeRef>
+      </bpmn:lane>
+      
+      <bpmn:lane id="Lane_Legal" name="Правовое управление (ПУ)">
+        <bpmn:flowNodeRef>Task_LegalApproval</bpmn:flowNodeRef>
+      </bpmn:lane>
+      
+      <bpmn:lane id="Lane_UDO_DDA" name="УДО / ДДА">
+        <bpmn:flowNodeRef>Task_Paraphing</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_ArchiveOriginal</bpmn:flowNodeRef>
+      </bpmn:lane>
+      
+      <bpmn:lane id="Lane_Approvers" name="Согласующие подразделения">
+        <bpmn:flowNodeRef>Task_FunctionalApproval</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_SetApprovalVisa</bpmn:flowNodeRef>
+      </bpmn:lane>
+      
+      <bpmn:lane id="Lane_OA" name="Ответственный за акцепт (ОА)">
+        <bpmn:flowNodeRef>Task_AcceptanceWorks</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    
+    <!-- ЭТАП 1: ИНИЦИАЦИЯ -->
+    <bpmn:startEvent id="StartEvent_InitiateContract" name="Инициирование договора">
+      <bpmn:outgoing>Flow_Start_To_Budget</bpmn:outgoing>
+    </bpmn:startEvent>
+    
+    <bpmn:exclusiveGateway id="Gateway_CheckBudget" name="Проверка бюджета">
+      <bpmn:incoming>Flow_Start_To_Budget</bpmn:incoming>
+      <bpmn:outgoing>Flow_Budget_OK</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Budget_Exceeded</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    
+    <bpmn:task id="Task_PrepareDraft" name="Подготовка проекта и Пояснительной записки">
+      <bpmn:incoming>Flow_Budget_OK</bpmn:incoming>
+      <bpmn:incoming>Flow_Budget_Approved</bpmn:incoming>
+      <bpmn:outgoing>Flow_Draft_To_CollectDocs</bpmn:outgoing>
+    </bpmn:task>
+    
+    <bpmn:task id="Task_CollectCounterpartyDocs" name="Сбор и проверка документов контрагента">
+      <bpmn:incoming>Flow_Draft_To_CollectDocs</bpmn:incoming>
+      <bpmn:outgoing>Flow_Collect_To_Check</bpmn:outgoing>
+    </bpmn:task>
+    
+    <!-- ЭТАП 2: СОГЛАСОВАНИЕ И ЗАКЛЮЧЕНИЕ -->
+    <bpmn:exclusiveGateway id="Gateway_CheckDocsAvailable" name="Наличие документов контрагента?">
+      <bpmn:incoming>Flow_Collect_To_Check</bpmn:incoming>
+      <bpmn:outgoing>Flow_Docs_Available</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Docs_Missing</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    
+    <bpmn:task id="Task_PlaceForApproval" name="Размещение проекта на согласование в ИС «Договоры»">
+      <bpmn:incoming>Flow_Docs_Available</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToApproval</bpmn:outgoing>
+    </bpmn:task>
+    
+    <bpmn:task id="Task_FunctionalApproval" name="Функциональное согласование">
+      <bpmn:incoming>Flow_ToApproval</bpmn:incoming>
+      <bpmn:outgoing>Flow_Functional_To_Visa</bpmn:outgoing>
+    </bpmn:task>
+    
+    <bpmn:task id="Task_SetApprovalVisa" name="Принятие визы (Одобрение / Замечания / Отказ)">
+      <bpmn:incoming>Flow_Functional_To_Visa</bpmn:incoming>
+      <bpmn:outgoing>Flow_Visa_To_Legal</bpmn:outgoing>
+    </bpmn:task>
+    
+    <bpmn:task id="Task_LegalApproval" name="Юридическая экспертиза и согласование">
+      <bpmn:incoming>Flow_Visa_To_Legal</bpmn:incoming>
+      <bpmn:outgoing>Flow_Legal_To_Comments</bpmn:outgoing>
+    </bpmn:task>
+    
+    <bpmn:exclusiveGateway id="Gateway_HandleComments" name="Учет замечаний">
+      <bpmn:incoming>Flow_Legal_To_Comments</bpmn:incoming>
+      <bpmn:outgoing>Flow_Comments_Exist</bpmn:outgoing>
+      <bpmn:outgoing>Flow_No_Comments</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    
+    <bpmn:task id="Task_PrepareForSigning" name="Подготовка к подписанию (распечатка, парафирование)">
+      <bpmn:incoming>Flow_No_Comments</bpmn:incoming>
+      <bpmn:incoming>Flow_Comments_Resolved</bpmn:incoming>
+      <bpmn:outgoing>Flow_Prepare_To_Paraph</bpmn:outgoing>
+    </bpmn:task>
+    
+    <bpmn:task id="Task_Paraphing" name="Парафирование документов">
+      <bpmn:incoming>Flow_Prepare_To_Paraph</bpmn:incoming>
+      <bpmn:outgoing>Flow_Paraph_To_Sign</bpmn:outgoing>
+    </bpmn:task>
+    
+    <bpmn:task id="Task_SignContract" name="Подписание договора">
+      <bpmn:incoming>Flow_Paraph_To_Sign</bpmn:incoming>
+      <bpmn:outgoing>Flow_Sign_To_Scan</bpmn:outgoing>
+    </bpmn:task>
+    
+    <bpmn:task id="Task_ScanAndUpload" name="Сканирование и размещение подписанного оригинала">
+      <bpmn:incoming>Flow_Sign_To_Scan</bpmn:incoming>
+      <bpmn:outgoing>Flow_Scan_To_Status</bpmn:outgoing>
+    </bpmn:task>
+    
+    <bpmn:task id="Task_ChangeStatusActive" name="Перевод в статус «Действующий»">
+      <bpmn:incoming>Flow_Scan_To_Status</bpmn:incoming>
+      <bpmn:outgoing>Flow_Status_To_Monitor</bpmn:outgoing>
+    </bpmn:task>
+    
+    <!-- ЭТАП 3: ИСПОЛНЕНИЕ -->
+    <bpmn:task id="Task_MonitorExecution" name="Мониторинг исполнения обязательств">
+      <bpmn:incoming>Flow_Status_To_Monitor</bpmn:incoming>
+      <bpmn:outgoing>Flow_Monitor_To_Acceptance</bpmn:outgoing>
+    </bpmn:task>
+    
+    <bpmn:task id="Task_AcceptanceWorks" name="Акцепт (Приемка работ/услуг/поставок)">
+      <bpmn:incoming>Flow_Monitor_To_Acceptance</bpmn:incoming>
+      <bpmn:outgoing>Flow_Acceptance_To_CheckChanges</bpmn:outgoing>
+    </bpmn:task>
+    
+    <bpmn:exclusiveGateway id="Gateway_CheckChangesNeeded" name="Проверка необходимости изменений/расторжения">
+      <bpmn:incoming>Flow_Acceptance_To_CheckChanges</bpmn:incoming>
+      <bpmn:outgoing>Flow_Changes_Needed</bpmn:outgoing>
+      <bpmn:outgoing>Flow_No_Changes</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    
+    <bpmn:task id="Task_InitiateClaims" name="Инициирование претензионной работы">
+      <bpmn:incoming>Flow_Changes_Needed</bpmn:incoming>
+      <bpmn:outgoing>Flow_Claims_To_Monitor</bpmn:outgoing>
+    </bpmn:task>
+    
+    <!-- ЭТАП 4: ПРЕКРАЩЕНИЕ И АРХИВАЦИЯ -->
+    <bpmn:exclusiveGateway id="Gateway_ObligationsCompleted" name="Обязательства прекращены?">
+      <bpmn:incoming>Flow_No_Changes</bpmn:incoming>
+      <bpmn:outgoing>Flow_Obligations_Completed</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Obligations_Continue</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    
+    <bpmn:task id="Task_InitiateArchiving" name="Инициирование списания договора в архив">
+      <bpmn:incoming>Flow_Obligations_Completed</bpmn:incoming>
+      <bpmn:outgoing>Flow_Initiate_To_Archive</bpmn:outgoing>
+    </bpmn:task>
+    
+    <bpmn:task id="Task_ArchiveOriginal" name="Архивирование оригинала договора">
+      <bpmn:incoming>Flow_Initiate_To_Archive</bpmn:incoming>
+      <bpmn:outgoing>Flow_Archive_To_End</bpmn:outgoing>
+    </bpmn:task>
+    
+    <bpmn:endEvent id="EndEvent_ProcessComplete" name="Процесс завершен">
+      <bpmn:incoming>Flow_Archive_To_End</bpmn:incoming>
+    </bpmn:endEvent>
+    
+    <!-- Определение потоков последовательности (Sequence Flows) -->
+    <bpmn:sequenceFlow id="Flow_Start_To_Budget" sourceRef="StartEvent_InitiateContract" targetRef="Gateway_CheckBudget" />
+    <bpmn:sequenceFlow id="Flow_Budget_OK" name="Бюджет в норме" sourceRef="Gateway_CheckBudget" targetRef="Task_PrepareDraft" />
+    <bpmn:sequenceFlow id="Flow_Budget_Exceeded" name="Превышение бюджета" sourceRef="Gateway_CheckBudget" targetRef="Task_PrepareDraft">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${budgetExceeded == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Budget_Approved" name="Согласовано" sourceRef="Gateway_CheckBudget" targetRef="Task_PrepareDraft" />
+    <bpmn:sequenceFlow id="Flow_Draft_To_CollectDocs" sourceRef="Task_PrepareDraft" targetRef="Task_CollectCounterpartyDocs" />
+    <bpmn:sequenceFlow id="Flow_Collect_To_Check" sourceRef="Task_CollectCounterpartyDocs" targetRef="Gateway_CheckDocsAvailable" />
+    <bpmn:sequenceFlow id="Flow_Docs_Available" name="Документы в наличии" sourceRef="Gateway_CheckDocsAvailable" targetRef="Task_PlaceForApproval" />
+    <bpmn:sequenceFlow id="Flow_Docs_Missing" name="Документы отсутствуют" sourceRef="Gateway_CheckDocsAvailable" targetRef="Task_CollectCounterpartyDocs" />
+    <bpmn:sequenceFlow id="Flow_ToApproval" sourceRef="Task_PlaceForApproval" targetRef="Task_FunctionalApproval" />
+    <bpmn:sequenceFlow id="Flow_Functional_To_Visa" sourceRef="Task_FunctionalApproval" targetRef="Task_SetApprovalVisa" />
+    <bpmn:sequenceFlow id="Flow_Visa_To_Legal" sourceRef="Task_SetApprovalVisa" targetRef="Task_LegalApproval" />
+    <bpmn:sequenceFlow id="Flow_Legal_To_Comments" sourceRef="Task_LegalApproval" targetRef="Gateway_HandleComments" />
+    <bpmn:sequenceFlow id="Flow_Comments_Exist" name="Есть замечания" sourceRef="Gateway_HandleComments" targetRef="Task_PlaceForApproval">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${hasComments == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_No_Comments" name="Замечаний нет" sourceRef="Gateway_HandleComments" targetRef="Task_PrepareForSigning" />
+    <bpmn:sequenceFlow id="Flow_Comments_Resolved" name="Замечания учтены" sourceRef="Gateway_HandleComments" targetRef="Task_PrepareForSigning" />
+    <bpmn:sequenceFlow id="Flow_Prepare_To_Paraph" sourceRef="Task_PrepareForSigning" targetRef="Task_Paraphing" />
+    <bpmn:sequenceFlow id="Flow_Paraph_To_Sign" sourceRef="Task_Paraphing" targetRef="Task_SignContract" />
+    <bpmn:sequenceFlow id="Flow_Sign_To_Scan" sourceRef="Task_SignContract" targetRef="Task_ScanAndUpload" />
+    <bpmn:sequenceFlow id="Flow_Scan_To_Status" sourceRef="Task_ScanAndUpload" targetRef="Task_ChangeStatusActive" />
+    <bpmn:sequenceFlow id="Flow_Status_To_Monitor" sourceRef="Task_ChangeStatusActive" targetRef="Task_MonitorExecution" />
+    <bpmn:sequenceFlow id="Flow_Monitor_To_Acceptance" sourceRef="Task_MonitorExecution" targetRef="Task_AcceptanceWorks" />
+    <bpmn:sequenceFlow id="Flow_Acceptance_To_CheckChanges" sourceRef="Task_AcceptanceWorks" targetRef="Gateway_CheckChangesNeeded" />
+    <bpmn:sequenceFlow id="Flow_Changes_Needed" name="Требуется претензионная работа" sourceRef="Gateway_CheckChangesNeeded" targetRef="Task_InitiateClaims">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${claimsRequired == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_No_Changes" name="Изменений не требуется" sourceRef="Gateway_CheckChangesNeeded" targetRef="Gateway_ObligationsCompleted" />
+    <bpmn:sequenceFlow id="Flow_Claims_To_Monitor" sourceRef="Task_InitiateClaims" targetRef="Task_MonitorExecution" />
+    <bpmn:sequenceFlow id="Flow_Obligations_Completed" name="Да" sourceRef="Gateway_ObligationsCompleted" targetRef="Task_InitiateArchiving" />
+    <bpmn:sequenceFlow id="Flow_Obligations_Continue" name="Нет" sourceRef="Gateway_ObligationsCompleted" targetRef="Task_MonitorExecution" />
+    <bpmn:sequenceFlow id="Flow_Initiate_To_Archive" sourceRef="Task_InitiateArchiving" targetRef="Task_ArchiveOriginal" />
+    <bpmn:sequenceFlow id="Flow_Archive_To_End" sourceRef="Task_ArchiveOriginal" targetRef="EndEvent_ProcessComplete" />
+    
+  </bpmn:process>
+  
+  <!-- Диаграмма BPMN (визуальное представление) -->
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_Contract_Lifecycle">
+      <bpmndi:BPMNShape id="Participant_Contract_di" bpmnElement="Participant_Contract" isHorizontal="true">
+        <dc:Bounds x="160" y="80" width="3600" height="1200" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_RPFM_di" bpmnElement="Lane_RPFM" isHorizontal="true">
+        <dc:Bounds x="190" y="80" width="3570" height="200" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_OSD_di" bpmnElement="Lane_OSD" isHorizontal="true">
+        <dc:Bounds x="190" y="280" width="3570" height="200" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Legal_di" bpmnElement="Lane_Legal" isHorizontal="true">
+        <dc:Bounds x="190" y="480" width="3570" height="200" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_UDO_DDA_di" bpmnElement="Lane_UDO_DDA" isHorizontal="true">
+        <dc:Bounds x="190" y="680" width="3570" height="200" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Approvers_di" bpmnElement="Lane_Approvers" isHorizontal="true">
+        <dc:Bounds x="190" y="880" width="3570" height="200" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_OA_di" bpmnElement="Lane_OA" isHorizontal="true">
+        <dc:Bounds x="190" y="1080" width="3570" height="200" />
+      </bpmndi:BPMNShape>
+      
+      <!-- Элементы в дорожке РПФМ -->
+      <bpmndi:BPMNShape id="StartEvent_InitiateContract_di" bpmnElement="StartEvent_InitiateContract">
+        <dc:Bounds x="252" y="152" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="232" y="195" width="76" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_CheckBudget_di" bpmnElement="Gateway_CheckBudget" isMarkerVisible="true">
+        <dc:Bounds x="345" y="145" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="339" y="115" width="62" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      
+      <!-- Элементы в дорожке ОСД -->
+      <bpmndi:BPMNShape id="Task_PrepareDraft_di" bpmnElement="Task_PrepareDraft">
+        <dc:Bounds x="450" y="330" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_CollectCounterpartyDocs_di" bpmnElement="Task_CollectCounterpartyDocs">
+        <dc:Bounds x="610" y="330" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_CheckDocsAvailable_di" bpmnElement="Gateway_CheckDocsAvailable" isMarkerVisible="true">
+        <dc:Bounds x="765" y="345" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="751" y="402" width="78" height="40" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_PlaceForApproval_di" bpmnElement="Task_PlaceForApproval">
+        <dc:Bounds x="870" y="330" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_HandleComments_di" bpmnElement="Gateway_HandleComments" isMarkerVisible="true">
+        <dc:Bounds x="1395" y="345" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1378" y="402" width="84" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_PrepareForSigning_di" bpmnElement="Task_PrepareForSigning">
+        <dc:Bounds x="1510" y="330" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ScanAndUpload_di" bpmnElement="Task_ScanAndUpload">
+        <dc:Bounds x="1990" y="330" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_InitiateArchiving_di" bpmnElement="Task_InitiateArchiving">
+        <dc:Bounds x="3070" y="330" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      
+      <!-- Элементы в дорожке Правовое управление -->
+      <bpmndi:BPMNShape id="Task_LegalApproval_di" bpmnElement="Task_LegalApproval">
+        <dc:Bounds x="1230" y="530" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      
+      <!-- Элементы в дорожке УДО/ДДА -->
+      <bpmndi:BPMNShape id="Task_Paraphing_di" bpmnElement="Task_Paraphing">
+        <dc:Bounds x="1670" y="730" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ArchiveOriginal_di" bpmnElement="Task_ArchiveOriginal">
+        <dc:Bounds x="3230" y="730" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      
+      <!-- Элементы в дорожке Согласующие подразделения -->
+      <bpmndi:BPMNShape id="Task_FunctionalApproval_di" bpmnElement="Task_FunctionalApproval">
+        <dc:Bounds x="1030" y="930" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_SetApprovalVisa_di" bpmnElement="Task_SetApprovalVisa">
+        <dc:Bounds x="1030" y="1130" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      
+      <!-- Элементы в дорожке РПФМ (продолжение) -->
+      <bpmndi:BPMNShape id="Task_SignContract_di" bpmnElement="Task_SignContract">
+        <dc:Bounds x="1830" y="130" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ChangeStatusActive_di" bpmnElement="Task_ChangeStatusActive">
+        <dc:Bounds x="2150" y="130" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_MonitorExecution_di" bpmnElement="Task_MonitorExecution">
+        <dc:Bounds x="2310" y="130" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_CheckChangesNeeded_di" bpmnElement="Gateway_CheckChangesNeeded" isMarkerVisible="true">
+        <dc:Bounds x="2655" y="145" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2641" y="100" width="78" height="40" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_InitiateClaims_di" bpmnElement="Task_InitiateClaims">
+        <dc:Bounds x="2770" y="130" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_ObligationsCompleted_di" bpmnElement="Gateway_ObligationsCompleted" isMarkerVisible="true">
+        <dc:Bounds x="2935" y="145" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2922" y="202" width="76" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      
+      <!-- Элементы в дорожке ОА -->
+      <bpmndi:BPMNShape id="Task_AcceptanceWorks_di" bpmnElement="Task_AcceptanceWorks">
+        <dc:Bounds x="2470" y="1130" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      
+      <!-- Конечное событие -->
+      <bpmndi:BPMNShape id="EndEvent_ProcessComplete_di" bpmnElement="EndEvent_ProcessComplete">
+        <dc:Bounds x="3442" y="752" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="3433" y="795" width="54" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      
+      <!-- Соединительные линии (Sequence Flows) -->
+      <bpmndi:BPMNEdge id="Flow_Start_To_Budget_di" bpmnElement="Flow_Start_To_Budget">
+        <di:waypoint x="288" y="170" />
+        <di:waypoint x="345" y="170" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Budget_OK_di" bpmnElement="Flow_Budget_OK">
+        <di:waypoint x="370" y="195" />
+        <di:waypoint x="370" y="370" />
+        <di:waypoint x="450" y="370" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="378" y="280" width="84" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Draft_To_CollectDocs_di" bpmnElement="Flow_Draft_To_CollectDocs">
+        <di:waypoint x="550" y="370" />
+        <di:waypoint x="610" y="370" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Collect_To_Check_di" bpmnElement="Flow_Collect_To_Check">
+        <di:waypoint x="710" y="370" />
+        <di:waypoint x="765" y="370" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Docs_Available_di" bpmnElement="Flow_Docs_Available">
+        <di:waypoint x="815" y="370" />
+        <di:waypoint x="870" y="370" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="801" y="352" width="83" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Docs_Missing_di" bpmnElement="Flow_Docs_Missing">
+        <di:waypoint x="790" y="345" />
+        <di:waypoint x="790" y="310" />
+        <di:waypoint x="660" y="310" />
+        <di:waypoint x="660" y="330" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="675" y="292" width="100" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToApproval_di" bpmnElement="Flow_ToApproval">
+        <di:waypoint x="920" y="410" />
+        <di:waypoint x="920" y="970" />
+        <di:waypoint x="1030" y="970" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Functional_To_Visa_di" bpmnElement="Flow_Functional_To_Visa">
+        <di:waypoint x="1080" y="1010" />
+        <di:waypoint x="1080" y="1130" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Visa_To_Legal_di" bpmnElement="Flow_Visa_To_Legal">
+        <di:waypoint x="1130" y="1170" />
+        <di:waypoint x="1280" y="1170" />
+        <di:waypoint x="1280" y="610" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Legal_To_Comments_di" bpmnElement="Flow_Legal_To_Comments">
+        <di:waypoint x="1330" y="570" />
+        <di:waypoint x="1420" y="570" />
+        <di:waypoint x="1420" y="395" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Comments_Exist_di" bpmnElement="Flow_Comments_Exist">
+        <di:waypoint x="1395" y="370" />
+        <di:waypoint x="920" y="370" />
+        <di:waypoint x="920" y="410" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1120" y="352" width="78" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_No_Comments_di" bpmnElement="Flow_No_Comments">
+        <di:waypoint x="1445" y="370" />
+        <di:waypoint x="1510" y="370" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1450" y="352" width="74" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Prepare_To_Paraph_di" bpmnElement="Flow_Prepare_To_Paraph">
+        <di:waypoint x="1560" y="410" />
+        <di:waypoint x="1560" y="770" />
+        <di:waypoint x="1670" y="770" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Paraph_To_Sign_di" bpmnElement="Flow_Paraph_To_Sign">
+        <di:waypoint x="1770" y="770" />
+        <di:waypoint x="1880" y="770" />
+        <di:waypoint x="1880" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Sign_To_Scan_di" bpmnElement="Flow_Sign_To_Scan">
+        <di:waypoint x="1930" y="170" />
+        <di:waypoint x="2040" y="170" />
+        <di:waypoint x="2040" y="330" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Scan_To_Status_di" bpmnElement="Flow_Scan_To_Status">
+        <di:waypoint x="2090" y="370" />
+        <di:waypoint x="2200" y="370" />
+        <di:waypoint x="2200" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Status_To_Monitor_di" bpmnElement="Flow_Status_To_Monitor">
+        <di:waypoint x="2250" y="170" />
+        <di:waypoint x="2310" y="170" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Monitor_To_Acceptance_di" bpmnElement="Flow_Monitor_To_Acceptance">
+        <di:waypoint x="2360" y="210" />
+        <di:waypoint x="2360" y="1170" />
+        <di:waypoint x="2470" y="1170" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Acceptance_To_CheckChanges_di" bpmnElement="Flow_Acceptance_To_CheckChanges">
+        <di:waypoint x="2570" y="1170" />
+        <di:waypoint x="2680" y="1170" />
+        <di:waypoint x="2680" y="195" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Changes_Needed_di" bpmnElement="Flow_Changes_Needed">
+        <di:waypoint x="2705" y="170" />
+        <di:waypoint x="2770" y="170" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2694" y="136" width="86" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_No_Changes_di" bpmnElement="Flow_No_Changes">
+        <di:waypoint x="2705" y="170" />
+        <di:waypoint x="2935" y="170" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2774" y="152" width="73" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Claims_To_Monitor_di" bpmnElement="Flow_Claims_To_Monitor">
+        <di:waypoint x="2820" y="130" />
+        <di:waypoint x="2820" y="100" />
+        <di:waypoint x="2360" y="100" />
+        <di:waypoint x="2360" y="130" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Obligations_Completed_di" bpmnElement="Flow_Obligations_Completed">
+        <di:waypoint x="2985" y="170" />
+        <di:waypoint x="3120" y="170" />
+        <di:waypoint x="3120" y="330" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="3048" y="152" width="14" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Obligations_Continue_di" bpmnElement="Flow_Obligations_Continue">
+        <di:waypoint x="2960" y="145" />
+        <di:waypoint x="2960" y="80" />
+        <di:waypoint x="2360" y="80" />
+        <di:waypoint x="2360" y="130" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2652" y="62" width="20" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Initiate_To_Archive_di" bpmnElement="Flow_Initiate_To_Archive">
+        <di:waypoint x="3170" y="370" />
+        <di:waypoint x="3280" y="370" />
+        <di:waypoint x="3280" y="730" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Archive_To_End_di" bpmnElement="Flow_Archive_To_End">
+        <di:waypoint x="3330" y="770" />
+        <di:waypoint x="3442" y="770" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+  
+</bpmn:definitions>

@@ -1,0 +1,464 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.33.1">
+  <bpmn:collaboration id="Collaboration_Contract_Lifecycle">
+    <bpmn:participant id="Participant_Contract" name="Жизненный цикл договора ПАО «Авиакомпания «ЮТэйр»" processRef="Process_Contract_Lifecycle" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process_Contract_Lifecycle" name="Процесс жизненного цикла договора" isExecutable="true">
+    <bpmn:laneSet id="LaneSet_1">
+      <bpmn:lane id="Lane_RPFM" name="Руководитель ПФМ (РПФМ)">
+        <bpmn:flowNodeRef>StartEvent_InitiateContract</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_CheckBudget</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_SignContract</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_ChangeStatusActive</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_MonitorExecution</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_CheckChangesNeeded</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_ObligationsCompleted</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_InitiateClaims</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_OSD" name="Ответственный сотрудник по договору (ОСД)">
+        <bpmn:flowNodeRef>Task_PrepareDraft</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_CollectCounterpartyDocs</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_CheckDocsAvailable</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_PlaceForApproval</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_HandleComments</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_PrepareForSigning</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_ScanAndUpload</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_InitiateArchiving</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Legal" name="Правовое управление (ПУ)">
+        <bpmn:flowNodeRef>Task_LegalApproval</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_UDO_DDA" name="УДО / ДДА">
+        <bpmn:flowNodeRef>Task_Paraphing</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_ArchiveOriginal</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Approvers" name="Согласующие подразделения">
+        <bpmn:flowNodeRef>Task_FunctionalApproval</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_SetApprovalVisa</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_OA" name="Ответственный за акцепт (ОА)">
+        <bpmn:flowNodeRef>Task_AcceptanceWorks</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="StartEvent_InitiateContract" name="Инициирование договора">
+      <bpmn:documentation>Принятие решения о необходимости установления договорных отношений. РПФМ определяет необходимость заключения договора для обеспечения хозяйственной деятельности компании.</bpmn:documentation>
+      <bpmn:outgoing>Flow_Start_To_Budget</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:exclusiveGateway id="Gateway_CheckBudget" name="Проверка бюджета">
+      <bpmn:documentation>УСЛОВИЕ (п.9.1.4): Если цена договора ПРЕВЫШАЕТ утвержденный на период исполнения обязательств БЮДЖЕТ подразделения по соответствующей статье, то решение о заключении такого договора должно быть согласовано с Генеральным директором Авиакомпании или одним из заместителей генерального директора, а в отношении ПФМ, входящих в самолетный сегмент, – президентом «ЮТэйр»-Пассажирские авиалинии» или заместителем генерального директора – старшим операционным директором. ОТВЕТСТВЕННОСТЬ за наличие такого согласования лежит на руководителе ПФМ.</bpmn:documentation>
+      <bpmn:incoming>Flow_Start_To_Budget</bpmn:incoming>
+      <bpmn:outgoing>Flow_Budget_OK</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Budget_Exceeded</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="Task_PrepareDraft" name="Подготовка проекта и Пояснительной записки">
+      <bpmn:documentation>СРОК (п.11.1): 5 полных рабочих дней. СОДЕРЖАНИЕ Пояснительной записки (п.9.4.5): 1) краткое описание предполагаемого договора; 2) основание заключения; 3) цели и обоснование необходимости; 4) информация о цене договора; 5) информация о соответствии бюджету ПФМ; 6) указание на процедуры закупок по ФЗ-223 или ФЗ-44 (если применимо); 7) информация об ответственном сотруднике и контактах. ДОГОВОР ДОЛЖЕН СОДЕРЖАТЬ (п.9.4.6): предмет, требования к товарам/работам/услугам, объем, права и обязанности сторон, существенные условия, цену, порядок расчетов, перечень документов и сроки, сроки и место поставки, качество и гарантии, дату начала и срок действия, ответственность сторон, порядок разрешения споров, антикоррупционную оговорку.</bpmn:documentation>
+      <bpmn:incoming>Flow_Budget_OK</bpmn:incoming>
+      <bpmn:incoming>Flow_Budget_Approved</bpmn:incoming>
+      <bpmn:outgoing>Flow_Draft_To_CollectDocs</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_CollectCounterpartyDocs" name="Сбор и проверка документов контрагента">
+      <bpmn:documentation>ОБЯЗАТЕЛЬНЫЕ ДОКУМЕНТЫ (п.9.3.1): 1) устав юридического лица в действующей редакции с отметкой регистрирующего органа; 2) решение (протокол) об избрании исполнительного органа; 3) документ, подтверждающий право доверенного лица на совершение сделки; 4) документы, подтверждающие одобрение сделки соответствующим органом контрагента (если требуется); 5) лицензия и/или сертификат по виду деятельности (если требуется лицензирование); 6) выписка из ЕГРЮЛ (ЕГРИП) не позднее 30 календарных дней с момента выдачи. ПРОВЕРКА (п.9.3.3): благонадежность через сайт ФНС https://egrul.nalog.ru, проверка на банкротство http://bankrot.fedresurs.ru. ВСЕ документы размещаются в ИС «Контрагенты». ОТВЕТСТВЕННОСТЬ за сбор и актуальность документов несет ответственный сотрудник по договору (п.6.2).</bpmn:documentation>
+      <bpmn:incoming>Flow_Draft_To_CollectDocs</bpmn:incoming>
+      <bpmn:outgoing>Flow_Collect_To_Check</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:exclusiveGateway id="Gateway_CheckDocsAvailable" name="Наличие документов контрагента?">
+      <bpmn:documentation>УСЛОВИЕ (п.9.3.6): В случае если в карточке контрагента в ИС SAP ОТСУТСТВУЮТ какие-либо из документов, предусмотренных пп.9.3.1, 9.3.4 или п.9.6.2.5, ответственный сотрудник по договору НЕ ВПРАВЕ размещать проект договора на согласование в ИС «Договоры». ТРЕБУЕТСЯ полный комплект документов в актуальном состоянии. Процедура согласования может быть инициирована ТОЛЬКО при наличии ВСЕХ необходимых документов. Если документы отсутствуют или устарели - ВОЗВРАТ на сбор документов.</bpmn:documentation>
+      <bpmn:incoming>Flow_Collect_To_Check</bpmn:incoming>
+      <bpmn:outgoing>Flow_Docs_Available</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Docs_Missing</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="Task_PlaceForApproval" name="Размещение проекта на согласование в ИС «Договоры»">
+      <bpmn:documentation>ОСД создает запрос на согласование в ИС «Договоры» (п.10.4.1). ОБЯЗАТЕЛЬНЫЕ СОГЛАСУЮЩИЕ (п.12.2): РПФМ, БС, УКО, ПУ. ПУ согласовывает В ПОСЛЕДНЮЮ ОЧЕРЕДЬ при наличии виз всех прочих. ДОПОЛНИТЕЛЬНЫЕ СОГЛАСУЮЩИЕ (п.12.3-12.10): начальник ОТО (при внешнеэкономической сделке/перемещении через границу/приобретении АТИ ввезенного в РФ в течение 5 лет); начальник отдела страхования (если есть условия о страховании); начальник ЭУ (договоры с компаниями Группы ЮТэйр с индексом БГ, ИТ, ПР, УД, УТ, ВЛЭК, ПА, ПЧ, УД-ю, АВ; с иными контрагентами - БГ, ПЧ, АВ, ПА); начальник ДЗПИ (расходные договоры по КД-РД-Б7.005); начальник УЭ (лицензионные договоры и ИТ-услуги); заместитель ГД по управлению БП и начальник управления документации и аудитов (кодшеринговые соглашения, аренда ВС с экипажем); начальник отдела подбора и адаптации персонала (обучение, семинары, тренинги); УТиЗ (договоры с физлицами с индексом ФЛ). ОТВЕТСТВЕННОСТЬ за правильность перечня согласующих несет ответственный сотрудник по договору (п.12.15).</bpmn:documentation>
+      <bpmn:incoming>Flow_Docs_Available</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToApproval</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_FunctionalApproval" name="Функциональное согласование">
+      <bpmn:documentation>СРОК (п.11.2): 5 полных рабочих дней, истекает в 9.00 суток, следующих за днем истечения срока. ТАЙМЕР (п.11.3) отсчета включается с 00.00 суток, следующих за днем создания запроса. МАТРИЦА СОГЛАСОВАНИЯ (Таблица 12.1): каждое подразделение проверяет свои зоны ответственности - ПФМ: предмет и существенные условия, права/обязанности; БС: цена, первичные учетные документы, налоги, порядок расчетов, банковские реквизиты, валютный контроль; УКО: процедурные требования (одобрение, закупки по 44-ФЗ/223-ФЗ, одобрение контрагента, полномочия подписантов); ПУ: юридическая экспертиза всех условий, применимое право, подсудность; ДЗПИ: порядок закупок; ОТО: таможенное оформление (если применимо); иОС: страхование (если применимо). ПРАВА согласующего (п.10.4.2): направлять материалы экспертам, делегировать полномочия работнику своего подразделения, вносить замечания.</bpmn:documentation>
+      <bpmn:incoming>Flow_ToApproval</bpmn:incoming>
+      <bpmn:outgoing>Flow_Functional_To_Visa</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_SetApprovalVisa" name="Принятие визы (Одобрение / Замечания / Отказ)">
+      <bpmn:documentation>ВИДЫ ВИЗ (п.12.20): 1) СОГЛАСОВАТЬ - при отсутствии замечаний или при отсутствии курируемых вопросов; 2) СОГЛАСОВАНО С ЗАМЕЧАНИЕМ - при наличии принципиального согласия, но есть замечания (замечания ОБЯЗАТЕЛЬНО указываются в виде редакций пунктов или рекомендаций); 3) ОТРИЦАТЕЛЬНАЯ ВИЗА - при несогласии (п.12.21 определяет основания: отсутствие документов, отсутствие перевода, отсутствие экономической целесообразности, отсутствие существенных условий, несоответствие законодательству, отрицательная виза ПФМ, несоответствие интересам Авиакомпании, риски трансфертного ценообразования, нарушение порядка закупок, отсутствие бюджета). При ОТРИЦАТЕЛЬНОЙ ВИЗЕ (п.12.24): ПФМ может согласовать подписание с заместителем ГД по направлению через служебную записку, объясняя причины. ОТВЕТСТВЕННОСТЬ (п.6.7): согласующие лица отвечают за качественный анализ, соответствие замечаний законодательству, своевременность рассмотрения.</bpmn:documentation>
+      <bpmn:incoming>Flow_Functional_To_Visa</bpmn:incoming>
+      <bpmn:outgoing>Flow_Visa_To_Legal</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_LegalApproval" name="Юридическая экспертиза и согласование">
+      <bpmn:documentation>СРОК (п.11.2): 5 рабочих дней. ОЧЕРЕДНОСТЬ (п.12.2): ПУ согласовывает договор В ПОСЛЕДНЮЮ ОЧЕРЕДЬ при наличии виз ВСЕХ прочих согласующих лиц (исключение - при производственной необходимости РПФМ может запросить согласование ПУ раньше). ОБЯЗАННОСТИ ПУ (п.6.3): 1) проведение юридической экспертизы договора, включающей правовую оценку в целом; 2) проверку соответствия положений договора требованиям законодательства; 3) оценку возможных рисков по договору; 4) проверку надлежащей правоспособности контрагента; 5) проверку полномочий лиц, указанных подписантами, как со стороны Авиакомпании, так и контрагента; 6) проверку инициирования ПФМ одобрения сделки органами управления контрагента и/или Авиакомпании (если сделка подлежит одобрению согласно п.9.6.1.2-9.6.1.6). ПРАВО ПУ (п.12.26): при установлении признаков недобросовестности контрагента и/или нарушения законодательства РФ начальник ПУ вправе потребовать от ПФМ заключения с контрагентом соглашения о заверениях и гарантиях.</bpmn:documentation>
+      <bpmn:incoming>Flow_Visa_To_Legal</bpmn:incoming>
+      <bpmn:outgoing>Flow_Legal_To_Comments</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:exclusiveGateway id="Gateway_HandleComments" name="Учет замечаний">
+      <bpmn:documentation>УЧЕТ ЗАМЕЧАНИЙ (п.10.5.1-10.5.2): ОСД ОБЯЗАН внести правки в текст проекта договора по ОБЯЗАТЕЛЬНЫМ замечаниям согласующих подразделений в пределах их компетенции по матрице согласования (Таблица 12.1). ОСД НЕ ВПРАВЕ отклонить такие замечания. Замечания относительно условий, не указанных в матрице, являются РЕКОМЕНДАТЕЛЬНЫМИ. ЕСЛИ ПРОЕКТ подписан контрагентом - замечания вносятся в виде ПРОТОКОЛА РАЗНОГЛАСИЙ (или производных: протокол согласования разногласий, протокол урегулирования разногласий, протокол окончательного урегулирования). При большом количестве разногласий - ОСД вправе подготовить новую оферту. ЕСЛИ контрагент НЕ принимает замечания после переговоров: ОСД информирует подразделение, указавшее замечания, о непринятии и проделанной работе, передает документы РПФМ для принятия решения о возможности подписания БЕЗ учета замечаний. ОТВЕТСТВЕННОСТЬ за отклонение замечаний несет ответственный сотрудник по договору (п.10.5.2). При ОТСУТСТВИИ замечаний и ВСЕХ положительных визах - переход к подготовке подписания.</bpmn:documentation>
+      <bpmn:incoming>Flow_Legal_To_Comments</bpmn:incoming>
+      <bpmn:outgoing>Flow_Comments_Exist</bpmn:outgoing>
+      <bpmn:outgoing>Flow_No_Comments</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="Task_PrepareForSigning" name="Подготовка к подписанию (распечатка, парафирование)">
+      <bpmn:documentation>СРОК (п.11.6): 7 рабочих дней с момента завершения процесса согласования. Может быть увеличен по решению РПФМ исходя из сложности, объема проекта, объема замечаний. В срок НЕ входит время на перевод изменений на язык договора. ДЕЙСТВИЯ (п.10.6.1.1, 10.7.1): ОСД/специалист ДДА (для самолетного сегмента): 1) распечатывает реестр согласования; 2) распечатывает договор в необходимом количестве экземпляров или достает из дела оригинал с подписью контрагента; 3) комплектует приложения; 4) готовит сопроводительные документы; 5) готовит проект сопроводительного письма; 6) готовит рассылочный лист с адресом контрагента и способом отправки.</bpmn:documentation>
+      <bpmn:incoming>Flow_No_Comments</bpmn:incoming>
+      <bpmn:incoming>Flow_Comments_Resolved</bpmn:incoming>
+      <bpmn:outgoing>Flow_Prepare_To_Paraph</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_Paraphing" name="Парафирование документов">
+      <bpmn:documentation>ПАРАФИРОВАНИЕ (Приложение 1): применяется на договорах, содержащих более ОДНОГО листа текста. Заключается в проставлении подписи исполнителя или заверении специальной печатью. МЕСТО: на лицевой стороне листа, ВНИЗУ страницы в ПРАВОМ углу. ДЛЯ САМОЛЕТНОГО СЕГМЕНТА (п.10.6.2.4): УДО/ДДА парафирует ВСЕ страницы договора и приложений путем постраничного проставления оттиска штампа, предназначенного для парафирования. Парафы ставятся на КАЖДОЙ странице для защиты от подмены листов. ДЛЯ ДРУГИХ СЕГМЕНТОВ (п.10.7.1.4): ОСД парафирует договор. ТАКЖЕ (п.10.6.2.5, 10.7.1.5): при необходимости дописывается номер и дата договора на первом листе. ШТАМПЫ (Приложение 1): при необходимости проставляется штамп «С протоколом разногласий» / «С протоколом согласования разногласий» / «С протоколом урегулирования разногласий» под подписью Авиакомпании.</bpmn:documentation>
+      <bpmn:incoming>Flow_Prepare_To_Paraph</bpmn:incoming>
+      <bpmn:outgoing>Flow_Paraph_To_Sign</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_SignContract" name="Подписание договора">
+      <bpmn:documentation>ПОДПИСАНТЫ (п.10.6.4, 10.7.2): 1) Руководители ПФМ либо иные лица, имеющие соответствующие доверенности; 2) Генеральный директор Авиакомпании; 3) ДОГОВОРЫ С ФИЗЛИЦАМИ (п.10.6.4.3, 10.7.2.3) на выполнение ими работ/услуг, посреднические договоры (кроме аренды имущества у физлиц) подписываются ТОЛЬКО Генеральным директором, заместителем ГД – финансовым директором ИЛИ заместителем ГД – директором по административной работе. ПРОЦЕДУРА (п.10.6.2.6-10.6.2.8, 10.7.1.7-10.7.1.8): договор передается подписанту, подписывается, проставляется печать Авиакомпании. СКАНИРОВАНИЕ (п.10.6.2.9, 10.7.1.9): подписанный договор сканируется и вкладывается в карточку договора в ИС «Договоры» в качестве проекта (если подписан только Авиакомпанией или с протоколом разногласий) или в качестве подписанного договора с выбором вида «скан-копия договора» (если подписан ВСЕМИ сторонами БЕЗ разногласий).</bpmn:documentation>
+      <bpmn:incoming>Flow_Paraph_To_Sign</bpmn:incoming>
+      <bpmn:outgoing>Flow_Sign_To_Scan</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_ScanAndUpload" name="Сканирование и размещение подписанного оригинала">
+      <bpmn:documentation>ПРОЦЕДУРА (п.10.6.2.9-10.6.2.12, 10.7.1.9-10.7.1.11): После получения от контрагента подписанного ВСЕМИ сторонами оригинала договора БЕЗ РАЗНОГЛАСИЙ: 1) ОСД/УДО/ДДА (для самолетного сегмента) сканирует договор; 2) вкладывает скан-копию в карточку договора в ИС «Договоры» с выбором вида документа «скан-копия договора»; 3) сканирует сопроводительное письмо; 4) заполняет компонент «контрольные даты» с датой, адресом и способом отправки; 5) оригинал договора (экземпляр Авиакомпании) размещается на хранение в дело договора в УДО (для самолетного сегмента - ДДА помещает в дело договора). ХРАНЕНИЕ (п.8.4): УДО - с момента подписания, но не более 3 лет; архив (фонд действующих договоров) - от 3 лет и до окончания срока действия. Хранение дела договора осуществляется согласно РИ-М1.003.</bpmn:documentation>
+      <bpmn:incoming>Flow_Sign_To_Scan</bpmn:incoming>
+      <bpmn:outgoing>Flow_Scan_To_Status</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_ChangeStatusActive" name="Перевод в статус «Действующий»">
+      <bpmn:documentation>УСЛОВИЯ ПЕРЕВОДА (п.10.8.1-10.8.2): Перевод в статус «Действующий» осуществляется РУКОВОДИТЕЛЕМ ПФМ и производится ТОЛЬКО при ОДНОВРЕМЕННОМ выполнении ВСЕХ условий: 1) подписание договора ВСЕМИ сторонами БЕЗ разногласий (кроме договоров присоединения по п.9.6.3); 2) наличие одобрения контрагента (статус «Одобрен», «Истекает срок одобрения», «ДЗО», «Покупатель 100% предоплата»); 3) положительное согласование ВСЕМИ заинтересованными подразделениями; 4) заполненная в соответствии с условиями подписанного договора карточка в ИС «Договоры»; 5) наличие в карточке контрагента в ИС «Контрагенты» ВСЕХ документов, предусмотренных пп.9.3.1, 9.3.4, 9.6.2.5. ОТВЕТСТВЕННОСТЬ (п.10.8.2): за проверку соблюдения требований п.10.8 и за перевод карточки в статус «Действующий» несет РУКОВОДИТЕЛЬ ПФМ. ИСКЛЮЧЕНИЯ (п.10.8.3-10.8.4): в исключительных случаях при письменном разрешении ГД возможен перевод договора с индексом «ОД», заключаемого путем обмена документами. ОСОБЕННОСТИ для договоров с ФЛ (п.9.6.5.3): поле «Дата заключения» автоматически заполняется ТЕКУЩЕЙ датой и недоступно для редактирования. На бумажном экземпляре куратор обеспечивает проставление ТОЙ ЖЕ даты.</bpmn:documentation>
+      <bpmn:incoming>Flow_Scan_To_Status</bpmn:incoming>
+      <bpmn:outgoing>Flow_Status_To_Monitor</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_MonitorExecution" name="Мониторинг исполнения обязательств">
+      <bpmn:documentation>ОБЯЗАННОСТИ РПФМ (п.6.1, пп.10-12, 14-17): 1) проведение переговоров с контрагентом, в т.ч. по изменениям и расторжению; 2) согласование условий по замечаниям согласующих; 3) ПОСТОЯННЫЙ контроль исполнения условий со стороны Авиакомпании И контрагента, в т.ч. состояние взаиморасчетов, качество и количество товаров/работ/услуг; 4) своевременное приостановление исполнения обязательств Авиакомпанией, если контрагент не исполнил свои обязательства; 5) своевременное погашение дебиторской/кредиторской задолженности (в т.ч. зачет встречных требований); 6) направление претензий и подготовка материалов для ПУ согласно КД-РГ-039; 7) своевременный и надлежащий учет исполнения, применение санкций к контрагенту. ОБЯЗАННОСТИ ОСД (п.6.2, пп.2, 19-26): 1) сопровождение договора на ВСЕХ этапах - с момента принятия решения до передачи в архив; 2) проведение преддоговорных переговоров; 3) своевременная подготовка и направление документов для расчетов; 4) проверка корректности реквизитов контрагентов, информирование об изменениях; 5) своевременная подготовка и направление в БС первичных учетных документов; 6) своевременное расторжение и пролонгация договоров. УЧЕТ (п.13.3.1): ПФМ осуществляет мониторинг выполнения работ, оплаты, ведение переписки, приемку объема и качества, оценку соответствия требованиям договора, отражение в учете.</bpmn:documentation>
+      <bpmn:incoming>Flow_Status_To_Monitor</bpmn:incoming>
+      <bpmn:outgoing>Flow_Monitor_To_Acceptance</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_AcceptanceWorks" name="Акцепт (Приемка работ/услуг/поставок)">
+      <bpmn:documentation>ПОЛУЧЕНИЕ ДОКУМЕНТОВ (п.13.1.1): По факту выполнения работ/оказания услуг/поставки ТМЦ или АТИ ПФМ обеспечивает получение от контрагента и предоставление в БС: счетов на оплату, актов выполненных работ (оказанных услуг), пояснительных записок (если необходимо), счетов-фактур, товарно-транспортных накладных и других документов согласно специфике или условиям договора. АКТ ПРИЕМА-ПЕРЕДАЧИ ВС/недвижимости/иного имущества (п.13.1.1): в течение 5 рабочих дней с даты подписания направляется в БС через ЭСЗ с приложением копии. СООТВЕТСТВИЕ (п.13.1.1): расчетно-финансовые, первичные учетные документы ДОЛЖНЫ соответствовать условиям заключенных договоров. Документы, содержащие указание на товары/работы/услуги или возмещение расходов на условиях, НЕ предусмотренных договором, акцепту НЕ подлежат. НЕПОСТУПЛЕНИЕ ДОКУМЕНТОВ (п.13.1.2): если документы не поступили в указанный в договоре или установленный законом срок, ПФМ инициирует претензионную работу согласно КД-РГ-039. ПОДПИСАНИЕ (п.13.1.3): документы направляются РПФМ или ответственному за акцепт. ОТВЕТСТВЕННОСТЬ (п.13.1.3): за соответствие акцептованных документов условиям договора и фактическим обстоятельствам несет РПФМ или ответственный за акцепт. ЗАПРЕТ (п.13.1.4): НЕ допускается ФОРМАЛЬНОЕ подписание документов без ФАКТИЧЕСКОГО установления их наличия (осмотр имущества, проверка качества и объема работ/услуг). ПРОВЕРКА (п.13.1.5): БС, ПУ, УКО ВПРАВЕ проверять соответствие документов условиям договора и возвращать их в ПФМ для переоформления при выявлении несоответствий.</bpmn:documentation>
+      <bpmn:incoming>Flow_Monitor_To_Acceptance</bpmn:incoming>
+      <bpmn:outgoing>Flow_Acceptance_To_CheckChanges</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:exclusiveGateway id="Gateway_CheckChangesNeeded" name="Проверка необходимости изменений/расторжения">
+      <bpmn:documentation>УСЛОВИЕ (п.13.3.2): По результатам мониторинга исполнения договора ОСД направляет информацию РПФМ с оценкой качества исполнения договора на основе данных мониторинга. РЕЗУЛЬТАТОМ рассмотрения может стать: 1) подготовка претензии к контрагенту; 2) пересмотр условий действующего договора; 3) инициирование продления срока действия; 4) досрочное расторжение договора; 5) односторонний отказ от исполнения договора. ПРЕТЕНЗИОННАЯ РАБОТА (п.13.3.3): в случае неисполнения (ненадлежащего исполнения) контрагентом обязанностей ПФМ инициирует претензионно-исковую работу в порядке КД-РГ-039. При ОТСУТСТВИИ проблем - проверка прекращения обязательств.</bpmn:documentation>
+      <bpmn:incoming>Flow_Acceptance_To_CheckChanges</bpmn:incoming>
+      <bpmn:outgoing>Flow_Changes_Needed</bpmn:outgoing>
+      <bpmn:outgoing>Flow_No_Changes</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="Task_InitiateClaims" name="Инициирование претензионной работы">
+      <bpmn:documentation>ОСНОВАНИЕ (п.13.3.3): неисполнение (ненадлежащее исполнение) контрагентом обязанностей по договору. ОТВЕТСТВЕННОСТЬ РПФМ (п.6.1, п.16): 1) направление претензий и подготовка материалов для передачи в ПУ в соответствии с КД-РГ-039; 2) своевременный и надлежащий учет исполнения обязательств, применение соответствующих санкций к контрагенту. ОТВЕТСТВЕННОСТЬ ОСД (п.13.1.2): при непоступлении документов в срок инициирует претензионную работу. ДЕЙСТВИЯ: направление претензий, требование устранения нарушений, взыскание неустоек/штрафов/пеней, при необходимости - передача материалов в ПУ для обращения в суд. ПОСЛЕ РАЗРЕШЕНИЯ СИТУАЦИИ: возврат к мониторингу исполнения обязательств.</bpmn:documentation>
+      <bpmn:incoming>Flow_Changes_Needed</bpmn:incoming>
+      <bpmn:outgoing>Flow_Claims_To_Monitor</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:exclusiveGateway id="Gateway_ObligationsCompleted" name="Обязательства прекращены?">
+      <bpmn:documentation>ПРЕКРАЩЕНИЕ ОБЯЗАТЕЛЬСТВ (п.18.1): прекращение прав и обязанностей, составляющих содержание обязательства. Обязательства по договору прекращаются полностью или частично по основаниям, предусмотренным гражданским законодательством, иными правовыми актами или договором. ОСНОВАНИЯ ПРЕКРАЩЕНИЯ: надлежащее исполнение, предоставление отступного, зачет встречного однородного требования, расторжение договора, односторонний отказ от договора. ПОЛНОЕ ИСПОЛНЕНИЕ (п.18.2): если выполнены ВСЕ обязательства сторонами в ПОЛНОМ объеме И истек срок действия договора без условия о пролонгации, ИЛИ срок определяется полным исполнением - договор считается ПОЛНОСТЬЮ ИСПОЛНЕННЫМ. Дальнейшая работа (поставка, приемка, оформление документов) НЕДОПУСТИМА. СРОК ИСТЕК, НО ОБЯЗАТЕЛЬСТВА НЕ ИСПОЛНЕНЫ (п.18.3): если дата наступила, договор без пролонгации, но обязательства не исполнены в полном объеме - договор НЕ считается прекратившим действие. НЕДЕЙСТВУЮЩИЕ ДОГОВОРЫ (п.18.4): договоры с полностью исполненными обязательствами И/ИЛИ все обязательства прекращены - считаются недействующими и подлежат перемещению в архив. Если обязательства НЕ прекращены - продолжается мониторинг исполнения.</bpmn:documentation>
+      <bpmn:incoming>Flow_No_Changes</bpmn:incoming>
+      <bpmn:outgoing>Flow_Obligations_Completed</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Obligations_Continue</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="Task_InitiateArchiving" name="Инициирование списания договора в архив">
+      <bpmn:documentation>СРОК (п.18.5): ОСД ОБЯЗАН организовать перемещение в архив недействующих договоров в течение 30 календарных дней с момента расторжения договора, прекращения срока действия и т.д. ПРОЦЕДУРА (п.18.5): 1) ОСД создает запрос на согласование списания договора в архив в ИС «Договоры»; 2) в БС поступает соответствующее уведомление; 3) БС СОГЛАСОВЫВАЕТ передачу карточки договора в архив (проверяет отсутствие финансовых обязательств); 4) после согласования БС в адрес сотрудников УДО (для самолетного сегмента – специалист ДДА) поступает уведомление через ИС «Договоры». ОТВЕТСТВЕННОСТЬ ОСД (п.6.2, п.26): своевременное направление уведомления в БС о необходимости перемещения в архив недействующих договоров.</bpmn:documentation>
+      <bpmn:incoming>Flow_Obligations_Completed</bpmn:incoming>
+      <bpmn:outgoing>Flow_Initiate_To_Archive</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_ArchiveOriginal" name="Архивирование оригинала договора">
+      <bpmn:documentation>ПРОЦЕДУРА (п.18.5): Сотрудник УДО (для самолетного сегмента – специалист ДДА) выполняет: 1) ВЫЕМКУ оригинала договора на бумажном носителе из папки актуальных договоров; 2) СВЕРКУ комплекта документов по договору на бумажном носителе с перечнем документов, размещенных в карточке договора в ИС «Договоры»; 3) при ОТСУТСТВИИ какого-либо документа - информирует ОСД о необходимости принять меры к поиску недостающих документов; 4) ВНЕСЕНИЕ информации об архивировании в карточку договора в ИС «Договоры»: примечание, место хранения, местонахождение, номер в папке, номер фонда, номер описи, номер дела, месторасположение архива; 5) ПЕРЕДАЧУ оригинала договора в архив. ОБЯЗАННОСТИ УДО (п.6.5): своевременное принятие договора в архив и его архивное хранение. ХРАНЕНИЕ ДЕЛА (п.8.5, 18.6): осуществляется согласно РИ-М1.003. ПЕРИОДИЧЕСКИЙ КОНТРОЛЬ (п.8.6): руководители ПФМ НЕ РЕЖЕ одного раза в ПОЛГОДА осуществляют контроль актуальности данных о договорах, достоверности сведений в атрибутах карточки, полноты вложенных электронных копий документов, актуальности документов.</bpmn:documentation>
+      <bpmn:incoming>Flow_Initiate_To_Archive</bpmn:incoming>
+      <bpmn:outgoing>Flow_Archive_To_End</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="EndEvent_ProcessComplete" name="Процесс завершен">
+      <bpmn:documentation>ЗАВЕРШЕНИЕ (п.18.4-18.6): Жизненный цикл договора завершен. Договор переведен в архив. Все обязательства сторон по договору прекращены по основаниям, предусмотренным законодательством или договором. Документы сохранены в архиве для обеспечения юридической защиты интересов Авиакомпании и соблюдения установленных законодательством сроков хранения документации. Оригиналы договоров и договорной переписки хранятся в УДО (с момента подписания, но не более 3 лет) и в архиве (фонд действующих договоров - от 3 лет до окончания срока действия договора, далее в архиве согласно номенклатуре дел по РИ-М1.003). Процесс полностью соответствует требованиям РД-Б7.004-05 «Руководство по договорной работе».</bpmn:documentation>
+      <bpmn:incoming>Flow_Archive_To_End</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_Start_To_Budget" sourceRef="StartEvent_InitiateContract" targetRef="Gateway_CheckBudget" />
+    <bpmn:sequenceFlow id="Flow_Budget_OK" name="Бюджет в норме" sourceRef="Gateway_CheckBudget" targetRef="Task_PrepareDraft" />
+    <bpmn:sequenceFlow id="Flow_Budget_Exceeded" name="Превышение бюджета" sourceRef="Gateway_CheckBudget" targetRef="Task_PrepareDraft">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${budgetExceeded == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Budget_Approved" name="Согласовано" sourceRef="Gateway_CheckBudget" targetRef="Task_PrepareDraft" />
+    <bpmn:sequenceFlow id="Flow_Draft_To_CollectDocs" sourceRef="Task_PrepareDraft" targetRef="Task_CollectCounterpartyDocs" />
+    <bpmn:sequenceFlow id="Flow_Collect_To_Check" sourceRef="Task_CollectCounterpartyDocs" targetRef="Gateway_CheckDocsAvailable" />
+    <bpmn:sequenceFlow id="Flow_Docs_Available" name="Документы в наличии" sourceRef="Gateway_CheckDocsAvailable" targetRef="Task_PlaceForApproval" />
+    <bpmn:sequenceFlow id="Flow_Docs_Missing" name="Документы отсутствуют" sourceRef="Gateway_CheckDocsAvailable" targetRef="Task_CollectCounterpartyDocs" />
+    <bpmn:sequenceFlow id="Flow_ToApproval" sourceRef="Task_PlaceForApproval" targetRef="Task_FunctionalApproval" />
+    <bpmn:sequenceFlow id="Flow_Functional_To_Visa" sourceRef="Task_FunctionalApproval" targetRef="Task_SetApprovalVisa" />
+    <bpmn:sequenceFlow id="Flow_Visa_To_Legal" sourceRef="Task_SetApprovalVisa" targetRef="Task_LegalApproval" />
+    <bpmn:sequenceFlow id="Flow_Legal_To_Comments" sourceRef="Task_LegalApproval" targetRef="Gateway_HandleComments" />
+    <bpmn:sequenceFlow id="Flow_Comments_Exist" name="Есть замечания" sourceRef="Gateway_HandleComments" targetRef="Task_PlaceForApproval">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${hasComments == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_No_Comments" name="Замечаний нет" sourceRef="Gateway_HandleComments" targetRef="Task_PrepareForSigning" />
+    <bpmn:sequenceFlow id="Flow_Comments_Resolved" name="Замечания учтены" sourceRef="Gateway_HandleComments" targetRef="Task_PrepareForSigning" />
+    <bpmn:sequenceFlow id="Flow_Prepare_To_Paraph" sourceRef="Task_PrepareForSigning" targetRef="Task_Paraphing" />
+    <bpmn:sequenceFlow id="Flow_Paraph_To_Sign" sourceRef="Task_Paraphing" targetRef="Task_SignContract" />
+    <bpmn:sequenceFlow id="Flow_Sign_To_Scan" sourceRef="Task_SignContract" targetRef="Task_ScanAndUpload" />
+    <bpmn:sequenceFlow id="Flow_Scan_To_Status" sourceRef="Task_ScanAndUpload" targetRef="Task_ChangeStatusActive" />
+    <bpmn:sequenceFlow id="Flow_Status_To_Monitor" sourceRef="Task_ChangeStatusActive" targetRef="Task_MonitorExecution" />
+    <bpmn:sequenceFlow id="Flow_Monitor_To_Acceptance" sourceRef="Task_MonitorExecution" targetRef="Task_AcceptanceWorks" />
+    <bpmn:sequenceFlow id="Flow_Acceptance_To_CheckChanges" sourceRef="Task_AcceptanceWorks" targetRef="Gateway_CheckChangesNeeded" />
+    <bpmn:sequenceFlow id="Flow_Changes_Needed" name="Требуется претензионная работа" sourceRef="Gateway_CheckChangesNeeded" targetRef="Task_InitiateClaims">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${claimsRequired == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_No_Changes" name="Изменений не требуется" sourceRef="Gateway_CheckChangesNeeded" targetRef="Gateway_ObligationsCompleted" />
+    <bpmn:sequenceFlow id="Flow_Claims_To_Monitor" sourceRef="Task_InitiateClaims" targetRef="Task_MonitorExecution" />
+    <bpmn:sequenceFlow id="Flow_Obligations_Completed" name="Да" sourceRef="Gateway_ObligationsCompleted" targetRef="Task_InitiateArchiving" />
+    <bpmn:sequenceFlow id="Flow_Obligations_Continue" name="Нет" sourceRef="Gateway_ObligationsCompleted" targetRef="Task_MonitorExecution" />
+    <bpmn:sequenceFlow id="Flow_Initiate_To_Archive" sourceRef="Task_InitiateArchiving" targetRef="Task_ArchiveOriginal" />
+    <bpmn:sequenceFlow id="Flow_Archive_To_End" sourceRef="Task_ArchiveOriginal" targetRef="EndEvent_ProcessComplete" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_Contract_Lifecycle">
+      <bpmndi:BPMNShape id="Participant_Contract_di" bpmnElement="Participant_Contract" isHorizontal="true">
+        <dc:Bounds x="160" y="80" width="3600" height="1200" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_OA_di" bpmnElement="Lane_OA" isHorizontal="true">
+        <dc:Bounds x="190" y="1080" width="3570" height="200" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Approvers_di" bpmnElement="Lane_Approvers" isHorizontal="true">
+        <dc:Bounds x="190" y="880" width="3570" height="200" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_UDO_DDA_di" bpmnElement="Lane_UDO_DDA" isHorizontal="true">
+        <dc:Bounds x="190" y="680" width="3570" height="200" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Legal_di" bpmnElement="Lane_Legal" isHorizontal="true">
+        <dc:Bounds x="190" y="480" width="3570" height="200" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_OSD_di" bpmnElement="Lane_OSD" isHorizontal="true">
+        <dc:Bounds x="190" y="280" width="3570" height="200" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_RPFM_di" bpmnElement="Lane_RPFM" isHorizontal="true">
+        <dc:Bounds x="190" y="80" width="3570" height="200" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="StartEvent_InitiateContract_di" bpmnElement="StartEvent_InitiateContract">
+        <dc:Bounds x="252" y="152" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="232" y="195" width="76" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_CheckBudget_di" bpmnElement="Gateway_CheckBudget" isMarkerVisible="true">
+        <dc:Bounds x="345" y="145" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="339" y="115" width="62" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_PrepareDraft_di" bpmnElement="Task_PrepareDraft">
+        <dc:Bounds x="450" y="330" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_CollectCounterpartyDocs_di" bpmnElement="Task_CollectCounterpartyDocs">
+        <dc:Bounds x="610" y="330" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_CheckDocsAvailable_di" bpmnElement="Gateway_CheckDocsAvailable" isMarkerVisible="true">
+        <dc:Bounds x="765" y="345" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="751" y="402" width="78" height="40" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_PlaceForApproval_di" bpmnElement="Task_PlaceForApproval">
+        <dc:Bounds x="870" y="330" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_FunctionalApproval_di" bpmnElement="Task_FunctionalApproval">
+        <dc:Bounds x="1030" y="930" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_SetApprovalVisa_di" bpmnElement="Task_SetApprovalVisa">
+        <dc:Bounds x="1030" y="1130" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_LegalApproval_di" bpmnElement="Task_LegalApproval">
+        <dc:Bounds x="1230" y="530" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_HandleComments_di" bpmnElement="Gateway_HandleComments" isMarkerVisible="true">
+        <dc:Bounds x="1395" y="345" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1378" y="402" width="84" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_PrepareForSigning_di" bpmnElement="Task_PrepareForSigning">
+        <dc:Bounds x="1510" y="330" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Paraphing_di" bpmnElement="Task_Paraphing">
+        <dc:Bounds x="1670" y="730" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_SignContract_di" bpmnElement="Task_SignContract">
+        <dc:Bounds x="1830" y="130" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ScanAndUpload_di" bpmnElement="Task_ScanAndUpload">
+        <dc:Bounds x="1990" y="330" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ChangeStatusActive_di" bpmnElement="Task_ChangeStatusActive">
+        <dc:Bounds x="2150" y="130" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_MonitorExecution_di" bpmnElement="Task_MonitorExecution">
+        <dc:Bounds x="2310" y="130" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_AcceptanceWorks_di" bpmnElement="Task_AcceptanceWorks">
+        <dc:Bounds x="2470" y="1130" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_CheckChangesNeeded_di" bpmnElement="Gateway_CheckChangesNeeded" isMarkerVisible="true">
+        <dc:Bounds x="2655" y="145" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2641" y="100" width="78" height="40" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_InitiateClaims_di" bpmnElement="Task_InitiateClaims">
+        <dc:Bounds x="2770" y="130" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_ObligationsCompleted_di" bpmnElement="Gateway_ObligationsCompleted" isMarkerVisible="true">
+        <dc:Bounds x="2935" y="145" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2922" y="202" width="76" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_InitiateArchiving_di" bpmnElement="Task_InitiateArchiving">
+        <dc:Bounds x="3070" y="330" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ArchiveOriginal_di" bpmnElement="Task_ArchiveOriginal">
+        <dc:Bounds x="3230" y="730" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_ProcessComplete_di" bpmnElement="EndEvent_ProcessComplete">
+        <dc:Bounds x="3442" y="752" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="3433" y="795" width="54" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_Start_To_Budget_di" bpmnElement="Flow_Start_To_Budget">
+        <di:waypoint x="288" y="170" />
+        <di:waypoint x="345" y="170" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Budget_OK_di" bpmnElement="Flow_Budget_OK">
+        <di:waypoint x="370" y="195" />
+        <di:waypoint x="370" y="370" />
+        <di:waypoint x="450" y="370" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="378" y="280" width="84" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Draft_To_CollectDocs_di" bpmnElement="Flow_Draft_To_CollectDocs">
+        <di:waypoint x="550" y="370" />
+        <di:waypoint x="610" y="370" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Collect_To_Check_di" bpmnElement="Flow_Collect_To_Check">
+        <di:waypoint x="710" y="370" />
+        <di:waypoint x="765" y="370" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Docs_Available_di" bpmnElement="Flow_Docs_Available">
+        <di:waypoint x="815" y="370" />
+        <di:waypoint x="870" y="370" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="801" y="352" width="83" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Docs_Missing_di" bpmnElement="Flow_Docs_Missing">
+        <di:waypoint x="790" y="345" />
+        <di:waypoint x="790" y="310" />
+        <di:waypoint x="660" y="310" />
+        <di:waypoint x="660" y="330" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="675" y="292" width="100" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToApproval_di" bpmnElement="Flow_ToApproval">
+        <di:waypoint x="920" y="410" />
+        <di:waypoint x="920" y="970" />
+        <di:waypoint x="1030" y="970" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Functional_To_Visa_di" bpmnElement="Flow_Functional_To_Visa">
+        <di:waypoint x="1080" y="1010" />
+        <di:waypoint x="1080" y="1130" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Visa_To_Legal_di" bpmnElement="Flow_Visa_To_Legal">
+        <di:waypoint x="1130" y="1170" />
+        <di:waypoint x="1280" y="1170" />
+        <di:waypoint x="1280" y="610" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Legal_To_Comments_di" bpmnElement="Flow_Legal_To_Comments">
+        <di:waypoint x="1330" y="570" />
+        <di:waypoint x="1420" y="570" />
+        <di:waypoint x="1420" y="395" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Comments_Exist_di" bpmnElement="Flow_Comments_Exist">
+        <di:waypoint x="1395" y="370" />
+        <di:waypoint x="920" y="370" />
+        <di:waypoint x="920" y="410" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1120" y="352" width="78" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_No_Comments_di" bpmnElement="Flow_No_Comments">
+        <di:waypoint x="1445" y="370" />
+        <di:waypoint x="1510" y="370" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1450" y="352" width="74" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Prepare_To_Paraph_di" bpmnElement="Flow_Prepare_To_Paraph">
+        <di:waypoint x="1560" y="410" />
+        <di:waypoint x="1560" y="770" />
+        <di:waypoint x="1670" y="770" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Paraph_To_Sign_di" bpmnElement="Flow_Paraph_To_Sign">
+        <di:waypoint x="1770" y="770" />
+        <di:waypoint x="1880" y="770" />
+        <di:waypoint x="1880" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Sign_To_Scan_di" bpmnElement="Flow_Sign_To_Scan">
+        <di:waypoint x="1930" y="170" />
+        <di:waypoint x="2040" y="170" />
+        <di:waypoint x="2040" y="330" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Scan_To_Status_di" bpmnElement="Flow_Scan_To_Status">
+        <di:waypoint x="2090" y="370" />
+        <di:waypoint x="2200" y="370" />
+        <di:waypoint x="2200" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Status_To_Monitor_di" bpmnElement="Flow_Status_To_Monitor">
+        <di:waypoint x="2250" y="170" />
+        <di:waypoint x="2310" y="170" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Monitor_To_Acceptance_di" bpmnElement="Flow_Monitor_To_Acceptance">
+        <di:waypoint x="2360" y="210" />
+        <di:waypoint x="2360" y="1170" />
+        <di:waypoint x="2470" y="1170" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Acceptance_To_CheckChanges_di" bpmnElement="Flow_Acceptance_To_CheckChanges">
+        <di:waypoint x="2570" y="1170" />
+        <di:waypoint x="2680" y="1170" />
+        <di:waypoint x="2680" y="195" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Changes_Needed_di" bpmnElement="Flow_Changes_Needed">
+        <di:waypoint x="2705" y="170" />
+        <di:waypoint x="2770" y="170" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2694" y="136" width="86" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_No_Changes_di" bpmnElement="Flow_No_Changes">
+        <di:waypoint x="2705" y="170" />
+        <di:waypoint x="2935" y="170" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2774" y="152" width="73" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Claims_To_Monitor_di" bpmnElement="Flow_Claims_To_Monitor">
+        <di:waypoint x="2820" y="130" />
+        <di:waypoint x="2820" y="100" />
+        <di:waypoint x="2360" y="100" />
+        <di:waypoint x="2360" y="130" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Obligations_Completed_di" bpmnElement="Flow_Obligations_Completed">
+        <di:waypoint x="2985" y="170" />
+        <di:waypoint x="3120" y="170" />
+        <di:waypoint x="3120" y="330" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="3048" y="152" width="14" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Obligations_Continue_di" bpmnElement="Flow_Obligations_Continue">
+        <di:waypoint x="2960" y="145" />
+        <di:waypoint x="2960" y="100" />
+        <di:waypoint x="2360" y="100" />
+        <di:waypoint x="2360" y="130" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2652" y="82" width="20" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Initiate_To_Archive_di" bpmnElement="Flow_Initiate_To_Archive">
+        <di:waypoint x="3170" y="370" />
+        <di:waypoint x="3280" y="370" />
+        <di:waypoint x="3280" y="730" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Archive_To_End_di" bpmnElement="Flow_Archive_To_End">
+        <di:waypoint x="3330" y="770" />
+        <di:waypoint x="3442" y="770" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
