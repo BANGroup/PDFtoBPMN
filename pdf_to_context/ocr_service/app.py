@@ -4,7 +4,7 @@ FastAPI микросервис для DeepSeek-OCR
 Использует официальный HuggingFace API для загрузки модели
 """
 
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List, Optional
@@ -133,12 +133,24 @@ async def health_check():
 
 
 @app.post("/ocr/figure", response_model=OCRResponse)
-async def ocr_figure(file: UploadFile = File(...)):
+async def ocr_figure(
+    file: UploadFile = File(...),
+    prompt_type: str = Form("default"),
+    custom_prompt: str = Form(None),
+    base_size: int = Form(1024),
+    image_size: int = Form(1024),
+    crop_mode: bool = Form(False)
+):
     """
     Обработка изображения через DeepSeek-OCR
     
     Args:
         file: Изображение в формате PNG/JPEG
+        prompt_type: Тип промпта ('default', 'bpmn', 'parse_figure', etc.)
+        custom_prompt: Кастомный промпт (опционально)
+        base_size: Базовый размер для обработки (default: 1024)
+        image_size: Размер изображения (default: 1024)
+        crop_mode: Режим обрезки (default: False)
     
     Returns:
         OCRResponse с распознанными блоками и markdown
@@ -159,26 +171,61 @@ async def ocr_figure(file: UploadFile = File(...)):
         try:
             # Создаем временную папку для результатов
             with tempfile.TemporaryDirectory() as tmp_output:
-                # Prompt для OCR
-                prompt = "<image>\n<|grounding|>Convert the document to markdown."
+                # Получаем промпт
+                if custom_prompt:
+                    prompt = custom_prompt
+                    logger.info(f"   Используется custom_prompt")
+                else:
+                    from pdf_to_context.ocr_service.prompts import OCRPrompts
+                    prompt = OCRPrompts.get_prompt_by_type(prompt_type)
+                    logger.info(f"   Используется prompt_type: {prompt_type}")
                 
                 # Обработка через DeepSeek-OCR
                 logger.info(f"📄 Обработка изображения {image.size}")
+                logger.info(f"🔍 Prompt: {prompt[:100]}...")
                 
-                res = model.infer(
-                    tokenizer,
-                    prompt=prompt,
-                    image_file=temp_path,
-                    output_path=tmp_output,
-                    base_size=1024,
-                    image_size=1024,
-                    crop_mode=False,
-                    save_results=False,  # Не сохраняем файлы
-                    test_compress=False
-                )
+                # КРИТИЧНО: Захватываем stdout, т.к. model.infer() печатает результат туда
+                import sys
+                from io import StringIO
                 
-                # Парсим результат
-                raw_output = res if isinstance(res, str) else str(res)
+                old_stdout = sys.stdout
+                sys.stdout = captured_output = StringIO()
+                
+                try:
+                    res = model.infer(
+                        tokenizer,
+                        prompt=prompt,
+                        image_file=temp_path,
+                        output_path=tmp_output,
+                        base_size=base_size,
+                        image_size=image_size,
+                        crop_mode=crop_mode,
+                        save_results=False,  # Не сохраняем файлы
+                        test_compress=False
+                    )
+                finally:
+                    sys.stdout = old_stdout
+                    captured_stdout = captured_output.getvalue()
+                
+                logger.info(f"🔍 Тип результата: {type(res)}")
+                logger.info(f"🔍 Результат (первые 500 символов): {str(res)[:500]}")
+                
+                # ВАЖНО: model.infer() печатает результат в stdout, а не возвращает!
+                raw_output = ""
+                if captured_stdout and len(captured_stdout) > 100:
+                    logger.info("✅ Используем captured stdout как результат")
+                    raw_output = captured_stdout
+                elif res is not None and str(res) != "None":
+                    logger.info("✅ Используем return value как результат")
+                    raw_output = res if isinstance(res, str) else str(res)
+                elif captured_stdout:
+                    logger.info("⚠️ Return пустой, используем stdout (даже если короткий)")
+                    raw_output = captured_stdout
+                else:
+                    logger.warning("⚠️ И return и stdout пусты!")
+                    raw_output = ""
+                
+                logger.info(f"🔍 raw_output (первые 500 символов):\n{'='*21}\n{raw_output[:500]}\n{'='*21}")
                 
                 # Извлекаем markdown (упрощенный парсинг)
                 markdown_text = ""
@@ -188,12 +235,15 @@ async def ocr_figure(file: UploadFile = File(...)):
                 lines = raw_output.split('\n')
                 current_block = None
                 block_counter = 0
+                i = 0
                 
-                for line in lines:
+                while i < len(lines):
+                    line = lines[i]
+                    
                     # Детектируем ref и det теги
                     if '<|ref|>' in line:
-                        # Начало нового блока
-                        if current_block:
+                        # Сохраняем предыдущий блок
+                        if current_block and current_block['content'].strip():
                             blocks.append(current_block)
                         
                         # Извлекаем тип
@@ -216,25 +266,34 @@ async def ocr_figure(file: UploadFile = File(...)):
                             'type': block_type,
                             'content': '',
                             'bbox': {
-                                'x0': bbox_data[0],
-                                'y0': bbox_data[1],
-                                'x1': bbox_data[2],
-                                'y1': bbox_data[3]
+                                'x0': float(bbox_data[0]),
+                                'y0': float(bbox_data[1]),
+                                'x1': float(bbox_data[2]),
+                                'y1': float(bbox_data[3])
                             },
                             'confidence': 1.0,
                             'metadata': {}
                         }
                         block_counter += 1
+                        
+                        # Извлекаем текст после тегов на той же строке
+                        if '<|/det|>' in line:
+                            text_after_tags = line.split('<|/det|>')[1].strip()
+                            if text_after_tags:
+                                current_block['content'] = text_after_tags
+                                markdown_text += text_after_tags + '\n'
                     
-                    elif current_block and not line.startswith('<|') and line.strip():
-                        # Добавляем контент к текущему блоку
+                    elif current_block and not line.startswith('<|') and not line.startswith('===') and line.strip():
+                        # Добавляем контент к текущему блоку (текст на следующих строках)
                         if current_block['content']:
                             current_block['content'] += '\n'
-                        current_block['content'] += line
-                        markdown_text += line + '\n'
+                        current_block['content'] += line.strip()
+                        markdown_text += line.strip() + '\n'
+                    
+                    i += 1
                 
                 # Добавляем последний блок
-                if current_block:
+                if current_block and current_block['content'].strip():
                     blocks.append(current_block)
                 
                 logger.info(f"✅ Распознано {len(blocks)} блоков")

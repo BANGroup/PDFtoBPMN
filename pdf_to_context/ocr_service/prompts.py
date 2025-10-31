@@ -70,6 +70,14 @@ class OCRPrompts:
         return "<image>\nDescribe this image in detail."
     
     @staticmethod
+    def get_ocr_simple_prompt() -> str:
+        """
+        ОФИЦИАЛЬНЫЙ промпт для простого OCR
+        Источник: DeepSeek-OCR официальная документация
+        """
+        return "<image>\n<|grounding|>OCR this image."
+    
+    @staticmethod
     def get_prompt_by_type(content_type: str) -> str:
         """
         Выбор промпта по типу контента
@@ -93,6 +101,7 @@ class OCRPrompts:
             'parse_figure': OCRPrompts.get_parse_figure_prompt(),    # ⭐⭐⭐ Для диаграмм
             'free_ocr': OCRPrompts.get_free_ocr_prompt(),
             'describe': OCRPrompts.get_describe_prompt(),
+            'ocr_simple': OCRPrompts.get_ocr_simple_prompt(),
         }
         
         return prompts.get(content_type, OCRPrompts.get_default_prompt())
