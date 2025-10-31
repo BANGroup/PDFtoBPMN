@@ -207,14 +207,160 @@ pip install vllm
 pip install https://github.com/vllm-project/vllm/releases/download/v0.8.5/vllm-0.8.5+cu118-cp310-cp310-manylinux1_x86_64.whl
 ```
 
-### Шаг 7: Установка flash-attention (опционально, для оптимизации)
+### Шаг 7: Настройка окружения для flash-attention (КРИТИЧНО!)
+
+**⚠️ ВАЖНО для RTX 5080 (Blackwell, sm_120)!**
+
+Flash-attention требует правильной настройки CUDA окружения и может занять 3-5 часов на компиляцию.
+
+#### 7.1 Настройка переменных окружения в venv
+
+Отредактируйте файл `venv/bin/activate` для автоматической настройки CUDA при активации:
 
 ```bash
-# flash-attention для ускорения (~500MB, 3-5 минут)
-pip install flash-attn --no-build-isolation
+nano DeepSeek-OCR/venv/bin/activate
 ```
 
-**Примечание**: Если сборка падает с ошибкой - можно пропустить, vLLM будет работать без него.
+Добавьте **перед строкой `export PATH`**:
+
+```bash
+# ===== CUDA Configuration (добавлено для flash-attn) =====
+_OLD_VIRTUAL_CUDA_HOME="${CUDA_HOME:-}"
+CUDA_HOME=/usr/local/cuda-12.8
+export CUDA_HOME
+
+_OLD_VIRTUAL_LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
+LD_LIBRARY_PATH=/usr/local/cuda-12.8/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
+export LD_LIBRARY_PATH
+
+# Добавляем nvcc в PATH (ПЕРЕД $PATH!)
+PATH="/usr/local/cuda-12.8/bin:$PATH"
+
+# Ограничиваем параллельные потоки компиляции (критично для 18GB RAM)
+export MAX_JOBS=1
+
+# Указываем архитектуру GPU (sm_120 для RTX 5080 Blackwell)
+export TORCH_CUDA_ARCH_LIST="12.0"
+# ===== End CUDA Configuration =====
+```
+
+В раздел `deactivate()` добавьте восстановление:
+
+```bash
+deactivate () {
+    # ... existing code ...
+    
+    # Restore CUDA environment
+    if [ -n "${_OLD_VIRTUAL_CUDA_HOME:-}" ] ; then
+        CUDA_HOME="${_OLD_VIRTUAL_CUDA_HOME:-}"
+        export CUDA_HOME
+        unset _OLD_VIRTUAL_CUDA_HOME
+    else
+        unset CUDA_HOME
+    fi
+    
+    if [ -n "${_OLD_VIRTUAL_LD_LIBRARY_PATH:-}" ] ; then
+        LD_LIBRARY_PATH="${_OLD_VIRTUAL_LD_LIBRARY_PATH:-}"
+        export LD_LIBRARY_PATH
+        unset _OLD_VIRTUAL_LD_LIBRARY_PATH
+    else
+        unset LD_LIBRARY_PATH
+    fi
+    
+    unset MAX_JOBS
+    unset TORCH_CUDA_ARCH_LIST
+    
+    # ... rest of existing code ...
+}
+```
+
+#### 7.2 Проверка настроек CUDA
+
+```bash
+# Деактивируйте и заново активируйте venv
+deactivate
+source venv/bin/activate
+
+# Проверьте переменные
+echo "CUDA_HOME: $CUDA_HOME"
+echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
+echo "MAX_JOBS: $MAX_JOBS"
+echo "TORCH_CUDA_ARCH_LIST: $TORCH_CUDA_ARCH_LIST"
+
+# Проверьте nvcc
+which nvcc
+nvcc --version  # Должно быть 12.8
+```
+
+**Ожидаемый вывод:**
+```
+CUDA_HOME: /usr/local/cuda-12.8
+LD_LIBRARY_PATH: /usr/local/cuda-12.8/lib64:...
+MAX_JOBS: 1
+TORCH_CUDA_ARCH_LIST: 12.0
+/usr/local/cuda-12.8/bin/nvcc
+Cuda compilation tools, release 12.8, V12.8.89
+```
+
+#### 7.3 Установка flash-attention
+
+```bash
+# Теперь устанавливаем flash-attn (3-5 часов)
+pip install flash-attn==2.7.3 --no-build-isolation
+```
+
+**Ожидаемые этапы:**
+1. **Building wheel** (~10-20 минут) - сборка Python пакета
+2. **Compiling CUDA kernels** (~3-4 часа) - компиляция для всех архитектур:
+   - sm_80 (Ampere: A100) ~45 минут
+   - sm_90 (Hopper: H100) ~45 минут  
+   - sm_100 (будущие GPU) ~45 минут
+   - sm_120 (Blackwell: RTX 5080) ~45 минут
+3. **Installing** (~2-5 минут)
+
+**Мониторинг процесса:**
+```bash
+# В другом терминале следите за процессом
+watch -n 10 'ps aux | grep -E "pip|nvcc|cicc" | grep -v grep | head -5'
+
+# Проверка использования памяти
+watch -n 5 'free -h'
+
+# Логи компиляции (если запущена в фоне с выводом в файл)
+tail -f /tmp/flash_attn_install.log
+```
+
+**⚠️ Важно:**
+- `MAX_JOBS=1` - критично! При 2+ потоках может произойти OOM (Out Of Memory)
+- Не прерывайте процесс, даже если кажется, что он завзавис
+- Убедитесь, что есть минимум 10GB свободной оперативной памяти
+- Процесс `cicc` (CUDA internal compiler) будет использовать до 4-6GB RAM
+
+#### 7.4 Проверка установки
+
+```bash
+python -c "import flash_attn; print('✅ Версия:', flash_attn.__version__)"
+```
+
+**Ожидаемый вывод:**
+```
+✅ flash-attn успешно импортирован!
+📦 Версия: 2.7.3
+🔍 Проверка доступных функций:
+   - flash_attn_func: True
+   - flash_attn_varlen_func: True
+🎯 flash-attn готов к использованию!
+```
+
+**Альтернатива (если компиляция не удалась):**
+
+Модель будет работать с `eager` attention (медленнее, но стабильно):
+
+```bash
+# В app.py автоматически используется fallback:
+# - Если flash-attn установлен → flash_attention_2
+# - Если нет → eager attention (с предупреждением)
+```
 
 ### Шаг 8: Проверка окружения
 
@@ -514,12 +660,85 @@ torch.cuda.empty_cache()
 pip install https://github.com/vllm-project/vllm/releases/download/v0.8.5/vllm-0.8.5+cu121-cp310-cp310-manylinux1_x86_64.whl
 ```
 
-### Проблема 4: flash-attention сборка падает
+### Проблема 4: flash-attention сборка падает с ошибками CUDA
 
-**Решение**: Пропустить, vLLM будет работать без него
+**Симптом 1: Неправильная версия nvcc**
+```
+RuntimeError: FlashAttention is only supported on CUDA 11.7 and above
+Note: make sure nvcc has a supported version by running nvcc -V.
+```
+
+**Причина:**  
+Системный `nvcc` (обычно 11.5) несовместим с PyTorch 2.9.0+cu128. Нужен nvcc из CUDA Toolkit 12.8.
+
+**✅ РЕШЕНИЕ:**
+
+Настройте CUDA окружение в виртуальном окружении (см. раздел "Шаг 7: Настройка окружения для flash-attention").
+
+Коротко:
 ```bash
-# flash-attention опциональный, можно не устанавливать
-# vLLM использует свои оптимизации
+# Редактируйте venv/bin/activate
+nano DeepSeek-OCR/venv/bin/activate
+
+# Добавьте перед export PATH:
+CUDA_HOME=/usr/local/cuda-12.8
+export CUDA_HOME
+LD_LIBRARY_PATH=/usr/local/cuda-12.8/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
+export LD_LIBRARY_PATH
+PATH="/usr/local/cuda-12.8/bin:$PATH"
+
+# Перезапустите venv и проверьте
+deactivate && source venv/bin/activate
+nvcc --version  # Должно быть 12.8
+```
+
+**Симптом 2: Killed during compilation / Out Of Memory**
+```
+Building wheels for collected packages: flash-attn
+  ...
+  Killed
+```
+
+**Причина:**  
+`nvcc` запускает несколько процессов `cicc` параллельно, каждый потребляет 4-6GB RAM. На системах с 16-18GB RAM происходит OOM.
+
+**✅ РЕШЕНИЕ:**
+
+Ограничьте параллельные потоки компиляции:
+```bash
+# В venv/bin/activate добавьте:
+export MAX_JOBS=1
+
+# Перезапустите venv
+deactivate && source venv/bin/activate
+
+# Проверьте
+echo $MAX_JOBS  # Должно быть 1
+
+# Установка займет 3-5 часов, но завершится успешно
+pip install flash-attn==2.7.3 --no-build-isolation
+```
+
+**Симптом 3: Компиляция длится слишком долго (>10 часов)**
+
+**Причина:**  
+`TORCH_CUDA_ARCH_LIST` игнорируется, flash-attn компилируется для всех архитектур (sm_80, sm_90, sm_100, sm_120).
+
+**⚠️ ИЗВЕСТНАЯ ПРОБЛЕМА:**  
+В текущей версии flash-attn список архитектур hardcoded в `setup.py`. Установка `TORCH_CUDA_ARCH_LIST` может не сработать.
+
+**Решение:**  
+Дождитесь завершения компиляции (~3-5 часов с `MAX_JOBS=1`), либо пропустите установку flash-attn.
+
+**Альтернатива: Работа без flash-attn**
+
+DeepSeek-OCR будет работать с `eager` attention (медленнее на 20-30%, но стабильно):
+
+```bash
+# Не устанавливайте flash-attn
+# app.py автоматически использует fallback:
+# - Если flash-attn установлен → flash_attention_2 (быстро)
+# - Если нет → eager attention (медленнее, но работает)
 ```
 
 ### Проблема 5: Модель не загружается
