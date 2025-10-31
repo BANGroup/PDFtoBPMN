@@ -6,6 +6,102 @@
 
 ---
 
+## [29-10-2025] - Реализована система BPMN-специфичных промптов для DeepSeek-OCR
+
+### Добавлено
+- **Модуль специализированных промптов** (`pdf_to_context/ocr_service/prompts.py`)
+  - `OCRPrompts.get_bpmn_diagram_prompt()` - извлечение структуры BPMN диаграмм
+  - `OCRPrompts.get_complex_diagram_prompt()` - сложные схемы (IDEF0, UML)
+  - `OCRPrompts.get_table_prompt()` - извлечение таблиц
+  - `OCRPrompts.get_text_with_graphics_prompt()` - текст + графика
+  - `OCRPrompts.get_prompt_by_type()` - выбор промпта по типу контента
+  - Класс `BPMNPrompts` с фокусированными промптами для gateways, events, lanes
+
+- **Расширенный API OCR сервиса**
+  - Параметр `prompt_type` в `/ocr/figure` endpoint
+  - Endpoint `GET /prompts` для получения списка доступных промптов с описаниями
+  - Поддержка типов: 'default', 'bpmn', 'complex_diagram', 'table', 'text_graphics'
+
+- **Тестовый скрипт** (`test_bpmn_pages.py`)
+  - Тестирование на страницах 54 и 26 из КД-СТ-161-01
+  - Автоматический рендеринг страниц PDF (300 DPI)
+  - OCR обработка с разными типами промптов
+  - Сохранение результатов: PNG, Markdown, JSON
+  - Статистика производительности (время рендеринга, время OCR, количество блоков)
+
+- **Документация**
+  - `DeepSeek-OCR/API_REFERENCE.md` - полная документация API
+  - `docs/BPMN_OCR_Strategy.md` - стратегия распознавания BPMN с DeepSeek-OCR
+  - `QUICKSTART_BPMN_TEST.md` - быстрый старт для тестирования
+
+### Изменено
+- **OCR сервис обновлен для кастомных промптов**
+  - Динамический выбор промпта по параметру `prompt_type`
+  - Улучшенное логирование с указанием типа промпта
+  - Импорт `OCRPrompts` с fallback для запуска напрямую
+
+### Техническая архитектура
+
+**Принципы разработки:**
+- **SOLID**: 
+  - Single Responsibility - класс OCRPrompts отвечает только за хранение промптов
+  - Open/Closed - легко добавить новые типы промптов без изменения существующего кода
+- **KISS**: Простые, понятные шаблоны промптов
+- **DRY**: Переиспользуемые промпты через метод get_prompt_by_type()
+
+**Архитектурное решение:**
+```
+PDF Page → Render (300 DPI) → DeepSeek-OCR (BPMN prompt) 
+    → Structured Markdown → (future: Parser → IR → BPMN XML)
+```
+
+### Анализ документа КД-СТ-161-01
+
+**Статистика:**
+- Всего страниц: 54
+- Страниц с BPMN контентом: 43 (79.6%)
+- Страниц со сложными диаграммами: 34 (>30 векторных элементов)
+
+**Тестовые страницы:**
+1. **Страница 54** - "Эксклюзивный шлюз по событиям"
+   - Простая BPMN диаграмма
+   - Элементы: Процесс 1, Gateway, События 1-2, Процессы 2-3
+   - Промпт: `bpmn`
+
+2. **Страница 26** - "Переход от IDEF0 к BPMN"
+   - Сложная схема с смешанными нотациями
+   - Элементы: IDEF0 + BPMN + текстовые пояснения
+   - Промпт: `complex_diagram`
+
+### Следующие шаги
+
+**После тестирования (если качество >90%):**
+1. Разработать `BPMNDetector` - автоматическое определение BPMN страниц
+2. Разработать `BPMNParser` - парсинг Markdown → BPMN IR
+3. Разработать `BPMNFormatter` - IR → BPMN 2.0 XML
+4. Интегрировать в `PDFToContextPipeline`
+
+**Если точность <80%:**
+1. Собрать датасет (50-100 аннотированных примеров)
+2. Fine-tuning DeepSeek-OCR на BPMN данных
+3. Повторное тестирование
+
+### Запуск тестирования
+
+```bash
+# Терминал 1: OCR сервис
+cd ~/Obligations && source DeepSeek-OCR/venv/bin/activate
+python -m uvicorn pdf_to_context.ocr_service.app:app --host 0.0.0.0 --port 8000
+
+# Терминал 2: Тест
+cd ~/Obligations && source DeepSeek-OCR/venv/bin/activate
+python test_bpmn_pages.py
+```
+
+**Результаты:** `output/bpmn_test/`
+
+---
+
 ## [29-10-2025] - Исправлена несовместимость RTX 5080 с PyTorch
 
 ### Проблема

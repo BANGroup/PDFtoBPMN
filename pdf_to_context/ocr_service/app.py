@@ -73,13 +73,25 @@ def load_model():
         
         # Загрузка модели
         logger.info("   Загрузка модели (это может занять время при первом запуске)...")
+        # Пытаемся использовать flash_attention_2, если не получается - fallback на eager
+        try:
+            import flash_attn
+            attn_impl = 'flash_attention_2'
+            logger.info("   ✅ flash-attn обнаружен, используем flash_attention_2")
+        except ImportError:
+            attn_impl = 'eager'
+            logger.warning("   ⚠️ flash-attn не установлен, используем eager attention (медленнее)")
+        
         model = AutoModel.from_pretrained(
             model_name,
-            _attn_implementation='eager',
+            _attn_implementation=attn_impl,
+            torch_dtype=torch.bfloat16,  # Указываем dtype сразу
+            device_map="cuda",  # Загружаем сразу на GPU
             trust_remote_code=True,
-            use_safetensors=True
+            use_safetensors=True,
+            low_cpu_mem_usage=True  # Оптимизация памяти
         )
-        model = model.eval().cuda().to(torch.bfloat16)
+        model = model.eval()  # Только eval, уже на GPU и в bfloat16
         
         model_loaded = True
         logger.info("✅ DeepSeek-OCR успешно загружен!")
