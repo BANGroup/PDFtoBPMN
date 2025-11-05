@@ -51,7 +51,7 @@ class PDFToContextPipeline:
     
     def __init__(self,
                  ocr_base_url: str = "http://localhost:8000",
-                 enable_ocr: bool = True,
+                 enable_ocr: Optional[bool] = None,
                  extract_images: bool = True,
                  extract_drawings: bool = True,
                  extract_tables: bool = True,
@@ -66,6 +66,7 @@ class PDFToContextPipeline:
         Args:
             ocr_base_url: URL DeepSeek-OCR микросервиса
             enable_ocr: Включить обработку графики через OCR
+                       (None = автоматическое определение по наличию GPU и сервиса)
             extract_images: Извлекать изображения
             extract_drawings: Извлекать векторную графику
             extract_tables: Извлекать таблицы
@@ -75,6 +76,9 @@ class PDFToContextPipeline:
             include_frontmatter: Включать YAML frontmatter
             include_toc: Включать оглавление
         """
+        # Автоматическое определение режима OCR
+        if enable_ocr is None:
+            enable_ocr = self._auto_detect_ocr(ocr_base_url)
         # Инициализация компонентов (НОВАЯ АРХИТЕКТУРА)
         self.analyzer = PageAnalyzer()
         self.native_extractor = NativeExtractor(
@@ -108,6 +112,50 @@ class PDFToContextPipeline:
             "ocr_processed": 0,
             "errors": []
         }
+    
+    @staticmethod
+    def _auto_detect_ocr(ocr_base_url: str) -> bool:
+        """
+        Автоматическое определение доступности OCR
+        
+        Проверяет:
+        1. Наличие CUDA/GPU (через PyTorch)
+        2. Доступность OCR сервиса
+        
+        Args:
+            ocr_base_url: URL OCR сервиса
+        
+        Returns:
+            bool: True если OCR доступен
+        """
+        # Проверка CUDA/GPU
+        cuda_available = False
+        try:
+            import torch
+            cuda_available = torch.cuda.is_available()
+        except ImportError:
+            pass
+        
+        # Проверка OCR сервиса
+        ocr_service_available = False
+        try:
+            import requests
+            response = requests.get(f"{ocr_base_url}/health", timeout=5)
+            ocr_service_available = response.status_code == 200
+        except:
+            pass
+        
+        # Вывод информации
+        if cuda_available and ocr_service_available:
+            print("🔍 Автоопределение режима: Native + OCR (GPU и сервис доступны)")
+            return True
+        else:
+            print("🔍 Автоопределение режима: Native only (только текстовая расшифровка)")
+            if not cuda_available:
+                print("   ℹ️  CUDA/GPU не доступна")
+            if not ocr_service_available:
+                print(f"   ℹ️  OCR сервис не доступен ({ocr_base_url})")
+            return False
     
     def process(self, pdf_path: str, output_path: Optional[str] = None) -> str:
         """

@@ -1,23 +1,83 @@
-# PDF to Context - основные зависимости
+# Requirements for BPMN Process Automation Project
+# Installation: pip install -r requirements.txt
+
+# ========================================
+# CORE DEPENDENCIES (обязательные)
+# ========================================
 
 # PDF обработка
-PyMuPDF>=1.23.0  # fitz - основной парсер PDF
-pdfplumber>=0.10.0  # Для извлечения таблиц (опционально)
+PyMuPDF>=1.23.0  # fitz - парсинг PDF, извлечение текста, изображений, векторной графики
 
-# Обработка изображений
-Pillow>=10.0.0  # PIL для работы с изображениями
+# Работа с изображениями
+Pillow>=10.0.0  # PIL - обработка изображений, конвертация форматов
 
-# HTTP клиент для OCR
+# HTTP клиент
 requests>=2.31.0  # HTTP запросы к OCR микросервису
 
-# YAML для frontmatter
-PyYAML>=6.0.1  # Парсинг и генерация YAML
+# ========================================
+# OCR SERVICE DEPENDENCIES (опциональные)
+# ========================================
+# Необходимы только для запуска DeepSeek-OCR сервиса
+# Если OCR не нужен - можно не устанавливать
 
-# Утилиты
-python-dateutil>=2.8.2  # Парсинг дат
+# Deep Learning framework
+torch>=2.0.0  # PyTorch - для работы с DeepSeek моделью и проверки CUDA
 
-# Опционально (для разработки)
+# Transformers
+transformers>=4.30.0  # HuggingFace - загрузка и использование DeepSeek-VL модели
+
+# Web framework для OCR сервиса
+fastapi>=0.104.0  # FastAPI - HTTP API для OCR микросервиса
+uvicorn>=0.24.0  # ASGI сервер для FastAPI
+pydantic>=2.0.0  # Валидация данных
+
+# File handling
+python-multipart>=0.0.6  # Обработка multipart/form-data для загрузки файлов
+
+# ========================================
+# DEVELOPMENT DEPENDENCIES (для разработки)
+# ========================================
+# Раскомментируйте при необходимости
+
 # pytest>=7.4.0  # Тестирование
 # black>=23.0.0  # Форматирование кода
 # flake8>=6.0.0  # Линтинг
+# mypy>=1.5.0  # Проверка типов
 
+# ========================================
+# DOCUMENTATION GENERATION (для генерации PDF)
+# ========================================
+# Эти зависимости устанавливаются отдельно через apt-get:
+#
+# ОБЯЗАТЕЛЬНО для автоматической генерации PDF из MD:
+#   sudo apt-get update
+#   sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended
+#
+# Проверка установки:
+#   which pandoc && pandoc --version
+#
+# Если pandoc не установлен:
+#   - Пайплайн будет работать нормально
+#   - Выведется предупреждение: "⚠️ pandoc не установлен"
+#   - PDF копии не будут созданы (останутся только MD файлы)
+
+# Альтернативные варианты для генерации PDF из Markdown:
+# weasyprint>=59.0  # Генерация PDF из HTML/Markdown (если не используется pandoc)
+# markdown>=3.4.0  # Парсинг Markdown
+
+# ========================================
+# NOTES
+# ========================================
+# 
+# Минимальная установка (без OCR):
+#   pip install PyMuPDF Pillow requests
+#
+# Полная установка (с OCR):
+#   pip install -r requirements.txt
+#
+# Для работы OCR также потребуется:
+#   - CUDA-совместимая GPU (для ускорения)
+#   - ~15 GB свободной памяти для модели DeepSeek-VL
+#
+# Для генерации PDF документации:
+#   sudo apt-get install pandoc texlive-xetex texlive-fonts-recommended
