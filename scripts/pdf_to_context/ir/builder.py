@@ -83,9 +83,10 @@ class IRBuilder:
                 ir_block = self._convert_image_block(image_block)
                 all_blocks.append(ir_block)
             
-            for drawing_block in page_data.get("drawing_blocks", []):
-                ir_block = self._convert_drawing_block(drawing_block)
-                all_blocks.append(ir_block)
+            # ❌ Векторная графика не нужна в MD - это только рамки, линии, декор
+            # for drawing_block in page_data.get("drawing_blocks", []):
+            #     ir_block = self._convert_drawing_block(drawing_block)
+            #     all_blocks.append(ir_block)
             
             for table_block in page_data.get("table_blocks", []):
                 ir_block = self._convert_table_block(table_block)
@@ -141,11 +142,9 @@ class IRBuilder:
         """Конвертация ImageBlock в IRBlock"""
         block_id = self._generate_id("image")
         
-        # Для изображений content = base64 или placeholder
-        # В Markdown будет: ![Image](data:image/png;base64,...)
-        import base64
-        image_base64 = base64.b64encode(image_block.image_data).decode('utf-8')
-        content = f"data:image/{image_block.format};base64,{image_base64}"
+        # ❌ НЕ ВСТАВЛЯЕМ BASE64 В MD - это создает бинарный мусор!
+        # ✅ Используем текстовый placeholder
+        content = f"[Изображение: {image_block.format.upper()}, {image_block.width}x{image_block.height}px]"
         
         return IRBlock(
             id=block_id,
