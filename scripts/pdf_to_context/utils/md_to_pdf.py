@@ -422,22 +422,37 @@ def get_converter() -> MarkdownToPDFConverter:
 
 def convert_md_to_pdf(md_path: str, 
                       pdf_path: Optional[str] = None,
+                      output_path: Optional[str] = None,  # Alias для pdf_path
                       landscape: bool = False,
-                      add_toc: bool = False) -> bool:
+                      add_toc: bool = False,
+                      format: str = 'docx') -> bool:
     """
-    Быстрая функция для конвертации MD → PDF
+    Быстрая функция для конвертации MD → DOCX/PDF
+    
+    ПРИМЕЧАНИЕ: Несмотря на название функции, по умолчанию конвертирует в DOCX.
+    Название - историческое наследие.
     
     Args:
         md_path: Путь к MD файлу
-        pdf_path: Путь к PDF файлу (опционально)
+        pdf_path: Путь к выходному файлу (опционально, устаревший параметр)
+        output_path: Путь к выходному файлу (опционально, предпочтительный параметр)
         landscape: Альбомная ориентация
         add_toc: Добавить оглавление
+        format: Формат вывода ('docx' или 'pdf'). По умолчанию 'docx'
     
     Returns:
         bool: True если успешно
     """
+    # Поддержка обоих параметров (output_path имеет приоритет)
+    final_path = output_path if output_path else pdf_path
+    
     converter = get_converter()
-    return converter.convert(md_path, pdf_path, landscape, add_toc)
+    
+    # Если указан format='docx', автоматически изменить расширение
+    if format == 'docx' and final_path and not final_path.endswith('.docx'):
+        final_path = final_path.replace('.pdf', '.docx')
+    
+    return converter.convert(md_path, final_path, landscape, add_toc)
 
 
 def convert_process_files(output_dir: str, base_name: str, format: str = 'docx') -> dict:

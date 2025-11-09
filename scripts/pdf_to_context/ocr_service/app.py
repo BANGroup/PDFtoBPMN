@@ -162,19 +162,10 @@ async def ocr_figure(
         # Читаем изображение
         image_data = await file.read()
         
-        # Проверяем валидность изображения
-        try:
-            image = Image.open(io.BytesIO(image_data))
-            image.verify()  # Проверка целостности
-            # После verify() нужно заново открыть
-            image = Image.open(io.BytesIO(image_data))
-        except Exception as e:
-            logger.error(f"❌ Невалидное изображение: {e}")
-            raise HTTPException(status_code=400, detail=f"Invalid image file: {e}")
-        
         # Сохраняем во временный файл (модель требует путь к файлу)
+        # DeepSeek-OCR имеет собственный internal parser, не нужна проверка PIL
         with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_file:
-            image.save(tmp_file.name)
+            tmp_file.write(image_data)
             temp_path = tmp_file.name
         
         try:
@@ -185,12 +176,12 @@ async def ocr_figure(
                     prompt = custom_prompt
                     logger.info(f"   Используется custom_prompt")
                 else:
-                    from pdf_to_context.ocr_service.prompts import OCRPrompts
+                    from .prompts import OCRPrompts
                     prompt = OCRPrompts.get_prompt_by_type(prompt_type)
                     logger.info(f"   Используется prompt_type: {prompt_type}")
                 
                 # Обработка через DeepSeek-OCR
-                logger.info(f"📄 Обработка изображения {image.size}")
+                logger.info(f"📄 Обработка изображения ({len(image_data)} байт)")
                 logger.info(f"🔍 Prompt: {prompt[:100]}...")
                 
                 # КРИТИЧНО: Захватываем stdout, т.к. model.infer() печатает результат туда
