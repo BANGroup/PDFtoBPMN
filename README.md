@@ -295,9 +295,18 @@ PDFtoBPMN/
 
 ### 1️⃣ `run_ocr` - CLI-обёртка для OCR
 
+**Формат команды:**
 ```bash
-# Запуск обработки PDF
+python3 scripts/utils/run_ocr.py <путь_к_PDF> [<путь_к_выходному_MD>]
+```
+
+**Использование:**
+```bash
+# Запуск обработки PDF (с указанием выходного файла):
 python3 scripts/utils/run_ocr.py input/document.pdf output/document_OCR.md
+
+# Вывод в stdout (без сохранения):
+python3 scripts/utils/run_ocr.py input/document.pdf
 ```
 
 **Что делает:**
@@ -308,10 +317,48 @@ python3 scripts/utils/run_ocr.py input/document.pdf output/document_OCR.md
 
 ---
 
-### 2️⃣ `test_deepseek_ocr` - Тест модели DeepSeek-OCR (GPU)
+### 2️⃣ `generate_docx` - Генерация DOCX копий процесса
 
+**Формат команды:**
 ```bash
-# Проверка установки DeepSeek-OCR
+python3 scripts/utils/generate_docx.py <output_dir> <base_name>
+```
+
+**Использование:**
+```bash
+# Генерация DOCX версий всех MD файлов процесса:
+python3 scripts/utils/generate_docx.py output/ДП-Б6001-07 ДП-Б6001-07
+
+# Другой пример:
+python3 scripts/utils/generate_docx.py output/ДП-М1.020-06 ДП-М1.020-06
+```
+
+**Что делает:**
+- Конвертирует все MD файлы процесса в DOCX (Word формат)
+- Автоматически применяет препроцессинг (Unicode → ASCII, удаление emoji)
+- Добавляет оглавление для Pipeline и документации
+- Выводит статистику генерации
+
+**Создаваемые файлы:**
+- `[base_name]_OCR.docx` - расшифровка документа
+- `[base_name]_RACI.docx` - матрица ответственности  
+- `[base_name]_Pipeline.docx` - текстовый пайплайн (с TOC)
+- `[base_name].docx` - документация процесса (с TOC)
+
+**Зависимости:** Требуется `pandoc`
+
+---
+
+### 3️⃣ `test_deepseek_ocr` - Тест модели DeepSeek-OCR (GPU)
+
+**Формат команды:**
+```bash
+python3 scripts/utils/test_deepseek_ocr.py
+```
+
+**Использование:**
+```bash
+# Проверка установки DeepSeek-OCR:
 python3 scripts/utils/test_deepseek_ocr.py
 ```
 
@@ -323,10 +370,16 @@ python3 scripts/utils/test_deepseek_ocr.py
 
 ---
 
-### 3️⃣ `check_ocr_health` - Проверка OCR сервиса
+### 4️⃣ `check_ocr_health` - Проверка OCR сервиса
 
+**Формат команды:**
 ```bash
-# Проверка что OCR сервис запущен и готов
+python3 scripts/utils/check_ocr_health.py
+```
+
+**Использование:**
+```bash
+# Проверка что OCR сервис запущен и готов:
 python3 scripts/utils/check_ocr_health.py
 ```
 
@@ -344,10 +397,16 @@ python3 scripts/utils/check_ocr_health.py && python3 scripts/utils/run_ocr.py in
 
 ---
 
-### 4️⃣ `test_paddle_isolated` - Тест PaddleOCR (CPU fallback)
+### 5️⃣ `test_paddle_isolated` - Тест PaddleOCR (CPU fallback)
 
+**Формат команды:**
 ```bash
-# Проверка PaddleOCR без GPU
+python3 scripts/utils/test_paddle_isolated.py
+```
+
+**Использование:**
+```bash
+# Проверка PaddleOCR без GPU:
 python3 scripts/utils/test_paddle_isolated.py
 ```
 
