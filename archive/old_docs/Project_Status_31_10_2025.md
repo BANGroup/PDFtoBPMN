@@ -194,7 +194,7 @@ BPMN IR (готово для XML)
 ## 📁 СТРУКТУРА ПРОЕКТА
 
 ```
-/home/budnik_an/Obligations/
+~/PDFtoBPMN/
 ├── pdf_to_context/
 │   └── ocr_service/
 │       ├── app.py              # FastAPI сервис (работает ✅)

@@ -17,7 +17,7 @@
 - ✅ **Модель DeepSeek-OCR** - загружена локально (~11-12GB)
 
 **Работающий микросервис:**
-- 📁 **Путь:** `/home/budnik_an/Obligations/scripts/pdf_to_context/ocr_service/app.py`
+- 📁 **Путь:** `~/PDFtoBPMN/scripts/pdf_to_context/ocr_service/app.py`
 - 🚀 **API:** FastAPI (порт 8000)
 - ⚡ **Endpoints:**
   - `POST /ocr/page` - OCR целой страницы
@@ -72,7 +72,7 @@
 **Официальная поддержка DeepSeek-OCR с 23.10.2025**
 
 ```bash
-cd /home/budnik_an/Obligations
+cd ~/PDFtoBPMN
 source DeepSeek-OCR/venv/bin/activate
 
 # Установить latest версию с поддержкой DeepSeek-OCR
@@ -91,7 +91,7 @@ pip install vllm --pre --extra-index-url https://wheels.vllm.ai/nightly
 ### Вариант 2: Стабильная версия 0.8.5
 
 ```bash
-cd /home/budnik_an/Obligations
+cd ~/PDFtoBPMN
 source DeepSeek-OCR/venv/bin/activate
 
 # Скачать wheel
@@ -115,7 +115,7 @@ pip install vllm-0.8.5+cu118-cp310-cp310-manylinux1_x86_64.whl
 
 ### 1. Обновить config.py для RTX 5080
 
-**Файл:** `/home/budnik_an/Obligations/DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-vllm/config.py`
+**Файл:** `~/PDFtoBPMN/DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-vllm/config.py`
 
 ```python
 # ============================================================================
@@ -145,8 +145,8 @@ MODEL_PATH = '/home/budnik_an/.cache/huggingface/hub/models--deepseek-ai--DeepSe
 # ============================================================================
 # ПУТИ (обновлено для Linux FS)
 # ============================================================================
-INPUT_PATH = '/home/budnik_an/Obligations/input/ДП-Б6.001-07 (Эталон 2 для ознакомления).pdf'
-OUTPUT_PATH = '/home/budnik_an/Obligations/output_vllm/'
+INPUT_PATH = '~/PDFtoBPMN/input/ДП-Б6.001-07 (Эталон 2 для ознакомления).pdf'
+OUTPUT_PATH = '~/PDFtoBPMN/output_vllm/'
 
 # ============================================================================
 # ПРОМПТ (для BPMN диаграмм)
@@ -170,7 +170,7 @@ find ~/.cache/huggingface/hub -name "*DeepSeek-OCR*" -type d
 ### Тест 1: Простое изображение
 
 ```bash
-cd /home/budnik_an/Obligations/DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-vllm
+cd ~/PDFtoBPMN/DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-vllm
 
 # Обновить INPUT_PATH в config.py на тестовое изображение
 python run_dpsk_ocr_image.py
@@ -179,7 +179,7 @@ python run_dpsk_ocr_image.py
 ### Тест 2: PDF документ (наш случай)
 
 ```bash
-cd /home/budnik_an/Obligations/DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-vllm
+cd ~/PDFtoBPMN/DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-vllm
 
 # Обновить INPUT_PATH в config.py на PDF
 python run_dpsk_ocr_pdf.py

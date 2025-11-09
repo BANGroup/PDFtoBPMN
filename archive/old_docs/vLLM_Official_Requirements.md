@@ -139,7 +139,7 @@ got an unexpected keyword argument 'tokenization_kwargs'
 
 **Команды:**
 ```bash
-cd /home/budnik_an/Obligations
+cd ~/PDFtoBPMN
 source DeepSeek-OCR/venv/bin/activate
 
 # Удалить текущий vLLM и PyTorch

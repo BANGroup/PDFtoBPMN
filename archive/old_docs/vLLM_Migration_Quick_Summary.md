@@ -70,7 +70,7 @@
 ### Вариант 1: Upstream (РЕКОМЕНДУЕТСЯ)
 
 ```bash
-cd /home/budnik_an/Obligations
+cd ~/PDFtoBPMN
 source DeepSeek-OCR/venv/bin/activate
 pip install vllm --pre --extra-index-url https://wheels.vllm.ai/nightly
 ```
@@ -101,14 +101,14 @@ CROP_MODE = False
 MODEL_PATH = '/home/budnik_an/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-OCR/...'
 
 # Пути
-INPUT_PATH = '/home/budnik_an/Obligations/input/ДП-Б6.001-07 (Эталон 2 для ознакомления).pdf'
-OUTPUT_PATH = '/home/budnik_an/Obligations/output_vllm/'
+INPUT_PATH = '~/PDFtoBPMN/input/ДП-Б6.001-07 (Эталон 2 для ознакомления).pdf'
+OUTPUT_PATH = '~/PDFtoBPMN/output_vllm/'
 ```
 
 ### 2. Запустить тест
 
 ```bash
-cd /home/budnik_an/Obligations/DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-vllm
+cd ~/PDFtoBPMN/DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-vllm
 python run_dpsk_ocr_pdf.py
 ```
 
