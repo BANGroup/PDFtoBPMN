@@ -64,6 +64,7 @@ jobs:
       
       - name: Run environment check
         run: python scripts/utils/check_environment.py
+        timeout-minutes: 2
         # Note: strict mode отключен для CI - warnings ожидаемы (no venv, no pandoc, no GPU)
   
   # ==================== JOB 2: Линтер (только Linux) ====================
