@@ -27,6 +27,7 @@ import argparse
 import re
 from pathlib import Path
 from typing import Optional
+import subprocess
 
 # Добавить путь к корню проекта в sys.path
 project_root = Path(__file__).resolve().parent.parent.parent
@@ -127,6 +128,44 @@ def print_stats(stats: dict):
     print(f"   ✓ Символов: {stats.get('total_chars', 0):,}")
 
 
+def run_environment_check() -> bool:
+    """
+    Запуск check_environment.py для валидации окружения
+    
+    Returns:
+        True если проверка прошла, False если были ошибки
+    """
+    check_script = project_root / "scripts" / "utils" / "check_environment.py"
+    
+    if not check_script.exists():
+        print("⚠️ Предупреждение: check_environment.py не найден")
+        print("   Пропускаем проверку окружения...")
+        return True  # Не блокировать выполнение
+    
+    try:
+        result = subprocess.run(
+            [sys.executable, str(check_script)],
+            capture_output=False,  # Показываем вывод напрямую
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode == 0:
+            return True
+        else:
+            print("\n❌ Проверка окружения не пройдена!")
+            print("   Рекомендуем устранить проблемы перед продолжением.")
+            response = input("\n❓ Продолжить всё равно? (y/N): ").strip().lower()
+            return response == 'y'
+            
+    except subprocess.TimeoutExpired:
+        print("⚠️ Timeout при проверке окружения (>30s)")
+        return True
+    except Exception as e:
+        print(f"⚠️ Ошибка при запуске проверки: {e}")
+        return True
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Универсальный скрипт для обработки документов (PDF/DOCX/XLSX)",
@@ -201,7 +240,30 @@ def main():
         help='Подробный вывод'
     )
     
+    parser.add_argument(
+        '--check-env',
+        action='store_true',
+        help='Проверить окружение перед обработкой (ОС, Python, кодировки, зависимости)'
+    )
+    
     args = parser.parse_args()
+    
+    # ===== ПРОВЕРКА ОКРУЖЕНИЯ (опционально) =====
+    if args.check_env:
+        print("=" * 70)
+        print("🔍 ПРОВЕРКА ОКРУЖЕНИЯ")
+        print("=" * 70)
+        print()
+        
+        if not run_environment_check():
+            print("\n❌ Прервано пользователем.")
+            sys.exit(1)
+        
+        print()
+        print("=" * 70)
+        print("✅ ПРОВЕРКА ЗАВЕРШЕНА - НАЧИНАЕМ ОБРАБОТКУ")
+        print("=" * 70)
+        print()
     
     # Валидация входного файла
     input_path = Path(args.input_file)

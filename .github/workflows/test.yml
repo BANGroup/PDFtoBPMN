@@ -1,0 +1,241 @@
+name: Cross-Platform Tests
+
+# Триггеры запуска workflow
+on:
+  # При каждом Push в любую ветку
+  push:
+    branches: [ "*" ]
+  
+  # При каждом Pull Request
+  pull_request:
+    branches: [ "*" ]
+  
+  # Ручной запуск через GitHub UI
+  workflow_dispatch:
+
+# Разрешения для GitHub токена
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  # ==================== JOB 1: Проверка окружения ====================
+  environment-check:
+    name: Environment Check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ['3.8', '3.10', '3.12']
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      
+      - name: Display Python version
+        run: python --version
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Run environment check (strict mode)
+        run: python scripts/utils/check_environment.py --strict
+  
+  # ==================== JOB 2: Линтер (только Linux) ====================
+  lint:
+    name: Code Quality Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      - name: Install linting tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 pylint black isort
+      
+      - name: Check code formatting with Black
+        run: |
+          black --check scripts/ --exclude "venv|DeepSeek-OCR" || echo "⚠️ Black formatting issues found"
+        continue-on-error: true
+      
+      - name: Check imports with isort
+        run: |
+          isort --check-only scripts/ --skip venv --skip DeepSeek-OCR || echo "⚠️ Import sorting issues found"
+        continue-on-error: true
+      
+      - name: Lint with flake8
+        run: |
+          # E501: line too long (игнорируем, это распространенная практика)
+          # W503: line break before binary operator (PEP 8 изменился)
+          flake8 scripts/ --exclude=venv,DeepSeek-OCR --max-line-length=120 --ignore=E501,W503 || echo "⚠️ Flake8 warnings found"
+        continue-on-error: true
+  
+  # ==================== JOB 3: Юнит-тесты ====================
+  unit-tests:
+    name: Unit Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: environment-check  # Запускать только если env check прошел
+    
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ['3.10']
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+      
+      - name: Run unit tests
+        run: |
+          # Если есть папка tests/, запустить pytest
+          if [ -d "tests" ] || [ -d "Tests" ]; then
+            pytest tests/ -v --cov=scripts/pdf_to_context --cov-report=term-missing
+          else
+            echo "ℹ️ Юнит-тесты не найдены (tests/ не существует)"
+            echo "⚠️ Рекомендация: Добавить юнит-тесты для критических компонентов"
+          fi
+        shell: bash
+        continue-on-error: true
+  
+  # ==================== JOB 4: Интеграционные тесты ====================
+  integration-tests:
+    name: Integration Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: environment-check
+    
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ['3.10']
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Test DOCX processing (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          echo "Testing run_document.py with DOCX..."
+          # Создать тестовый DOCX файл будет добавлено позже
+          echo "ℹ️ Интеграционные тесты будут добавлены в будущем"
+      
+      - name: Test DOCX processing (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          echo "Testing run_document.py with DOCX..."
+          echo "ℹ️ Интеграционные тесты будут добавлены в будущем"
+  
+  # ==================== JOB 5: Проверка encoding UTF-8 ====================
+  encoding-check:
+    name: UTF-8 Encoding Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Check for files without UTF-8 encoding
+        run: |
+          echo "🔍 Проверка encoding='utf-8' во всех Python файлах..."
+          
+          # Поиск open() без encoding=
+          problematic_files=$(grep -rn "open(" scripts/ --include="*.py" | \
+            grep -v "encoding=" | \
+            grep -v "fitz.open" | \
+            grep -v "Image.open" | \
+            grep -v "pdfplumber.open" | \
+            grep -v "os.open" | \
+            grep -v "os.fdopen" | \
+            grep -v "#" || true)
+          
+          if [ -n "$problematic_files" ]; then
+            echo "⚠️ Найдены файлы с open() без явного encoding:"
+            echo "$problematic_files"
+            echo ""
+            echo "Рекомендация: Добавить encoding='utf-8' для всех текстовых файлов"
+            # Не падать, только предупреждение
+          else
+            echo "✅ Все файлы используют явный encoding"
+          fi
+      
+      - name: Check for non-UTF-8 files
+        run: |
+          echo "🔍 Поиск файлов с не-UTF-8 кодировкой..."
+          
+          # Проверка кодировки Python файлов
+          find scripts/ -name "*.py" -type f | while read file; do
+            if ! file "$file" | grep -q "UTF-8"; then
+              echo "⚠️ Файл не в UTF-8: $file"
+            fi
+          done
+          
+          echo "✅ Проверка завершена"
+  
+  # ==================== JOB 6: Финальный статус ====================
+  all-tests-passed:
+    name: All Tests Passed
+    runs-on: ubuntu-latest
+    needs: [environment-check, lint, unit-tests, integration-tests, encoding-check]
+    if: always()
+    
+    steps:
+      - name: Check results
+        run: |
+          echo "📊 Статус всех проверок:"
+          echo "  - Environment Check: ${{ needs.environment-check.result }}"
+          echo "  - Lint: ${{ needs.lint.result }}"
+          echo "  - Unit Tests: ${{ needs.unit-tests.result }}"
+          echo "  - Integration Tests: ${{ needs.integration-tests.result }}"
+          echo "  - Encoding Check: ${{ needs.encoding-check.result }}"
+          
+          # Проверить что критические тесты прошли
+          if [ "${{ needs.environment-check.result }}" != "success" ]; then
+            echo "❌ Environment check failed!"
+            exit 1
+          fi
+          
+          if [ "${{ needs.encoding-check.result }}" != "success" ]; then
+            echo "❌ Encoding check failed!"
+            exit 1
+          fi
+          
+          # Lint и tests могут быть continue-on-error
+          echo "✅ Все критические проверки пройдены!"
+
+
