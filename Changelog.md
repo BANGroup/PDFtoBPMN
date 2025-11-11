@@ -18,6 +18,20 @@
 - ✅ **test.yml:** Убран `--strict` флаг (warnings в CI ожидаемы: no venv, no pandoc, no GPU)
 - **Причина:** Полный requirements.txt слишком тяжел для GitHub Actions (timeout после 7 минут)
 
+**Python 3.8 несовместим с python-docx 1.2.0:**
+- ✅ **test.yml:** Убран Python 3.8 из matrix (оставлены 3.10 и 3.12)
+- ✅ **check_environment.py:** Минимальная версия изменена с 3.8 на 3.9
+- ✅ **.cursorrules:** Обновлено требование Python ≥3.9
+- ✅ **README.md:** Обновлены все упоминания Python 3.8 → 3.9
+- **Причина:** python-docx 1.2.0+ требует Python ≥3.9 (Python 3.8 EOL октябрь 2024)
+- **Matrix testing:** 4 параллельных теста (было 6): 2 ОС × 2 версии Python
+
+**Проверка pandoc (опциональный компонент):**
+- ✅ Pandoc **НЕ** в requirements.txt/requirements-ci.txt (правильно - это не pip пакет)
+- ✅ Проверяется через subprocess в check_environment.py (внешняя программа)
+- ✅ Опционально: отсутствие pandoc → warning, НЕ error (не блокирует CI)
+- ✅ Windows: установка через MSI installer (документировано в README)
+
 ---
 
 ## [11-11-2025] - Кросс-платформенная совместимость и проверка окружения

@@ -78,13 +78,13 @@ def main():
     if response in ['', 'y', 'yes', 'да']:
         print()
         # Запустить новый скрипт
-        try:
+    try:
             result = subprocess.run(new_args, check=False)
             sys.exit(result.returncode)
         except FileNotFoundError:
             print(f"❌ Ошибка: Не найден новый скрипт: {run_document_script}")
             sys.exit(1)
-        except Exception as e:
+    except Exception as e:
             print(f"❌ Ошибка при запуске нового скрипта: {e}")
             sys.exit(1)
     else:

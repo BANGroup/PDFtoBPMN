@@ -154,7 +154,7 @@ venv\Scripts\activate.bat
 **Установка зависимостей:**
 
 ```powershell
-# Убедитесь что Python ≥3.8
+# Убедитесь что Python ≥3.9
 python --version
 
 # Установить зависимости
@@ -176,7 +176,7 @@ python scripts\utils\check_environment.py
 
 **Если что-то не работает на macOS:**
 1. Проверьте окружение: `python3 scripts/utils/check_environment.py`
-2. Убедитесь что Python ≥3.8: `python3 --version`
+2. Убедитесь что Python ≥3.9: `python3 --version`
 3. Проверьте UTF-8: `locale` (должно быть UTF-8)
 4. Создайте Issue с описанием проблемы
 
@@ -198,7 +198,7 @@ python scripts\utils\check_environment.py
 ┌──────────────────────────────────────────────────┐
 │ JOB 1: Environment Check (matrix: OS × Python)   │
 │  ✓ Linux (Ubuntu) + Windows                      │
-│  ✓ Python 3.8, 3.10, 3.12                        │
+│  ✓ Python 3.10, 3.12                             │
 │  ✓ Проверка ОС, версии, кодировок, зависимостей │
 └──────────────────────────────────────────────────┘
                     ↓
@@ -242,9 +242,9 @@ python scripts\utils\check_environment.py
 strategy:
   matrix:
     os: [ubuntu-latest, windows-latest]
-    python-version: ['3.8', '3.10', '3.12']
+    python-version: ['3.10', '3.12']
 ```
-Это означает: **6 параллельных тестов** (2 ОС × 3 версии Python)
+Это означает: **4 параллельных теста** (2 ОС × 2 версии Python)
 
 **Результаты в GitHub:**
 - ✅ Зеленая галочка → все тесты прошли, можно делать Merge

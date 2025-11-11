@@ -60,7 +60,7 @@ python3 scripts/utils/check_environment.py
 ## Минимальные требования
 
 ### Обязательно:
-- **Python:** ≥3.8 (для f-strings, typing, pathlib)
+- **Python:** ≥3.9 (python-docx 1.2.0+ требует минимум 3.9)
 - **ОС:** Linux (рекомендуется) или Windows с UTF-8 или macOS
 - **Кодировка:** UTF-8 (критично для русских текстов)
 - **Зависимости:** PyMuPDF, python-docx, openpyxl, requests, Pillow

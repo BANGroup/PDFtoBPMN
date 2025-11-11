@@ -114,11 +114,11 @@ class EnvironmentChecker:
         print(f"🐍 Python: {version_str}")
         
         if version.major < 3:
-            self.errors.append("❌ Python 2.x не поддерживается. Требуется Python ≥3.8")
-        elif version.major == 3 and version.minor < 8:
+            self.errors.append("❌ Python 2.x не поддерживается. Требуется Python ≥3.9")
+        elif version.major == 3 and version.minor < 9:
             self.errors.append(
                 f"❌ Python {version_str} слишком старый. "
-                "Требуется Python ≥3.8 (для новых фич: f-strings, typing, pathlib)"
+                "Требуется Python ≥3.9 (python-docx 1.2.0+ несовместим с Python 3.8)"
             )
         else:
             self.info.append(f"✅ Python {version_str} - поддерживается")
