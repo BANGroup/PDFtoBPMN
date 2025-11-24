@@ -2,6 +2,7 @@
 """
 Гибридный парсер для VBK документа.
 Использует find_tables() для структуры + группировку строк по номерам п/п.
+Интегрирован с NameNormalizer для устранения дубликатов контрагентов.
 """
 
 import fitz
@@ -11,6 +12,9 @@ from pathlib import Path
 from openpyxl import load_workbook
 from openpyxl.styles import numbers
 from typing import List
+
+# Импорт нормализатора
+from name_normalizer import get_normalizer
 
 
 class VBKHybridParser:
@@ -332,8 +336,45 @@ class VBKHybridParser:
         except ValueError:
             return None
     
+    def _normalize_names(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Добавляет нормализованные имена для контрагентов.
+        
+        Для Раздела II: "Наименование отправителя (плательщика) / получателя" (индекс 12)
+        Для Раздела III: "Наименование плательщика-1" (индекс 8), "Наименование получателя-1" (индекс 9)
+        """
+        normalizer = get_normalizer()
+        
+        if self.section == "II":
+            # Колонка с наименованием контрагента
+            name_col = "Наименование отправителя (плательщика) / получателя"
+            if name_col in df.columns:
+                # Создаём нормализованную версию
+                df[f"{name_col} (норм.)"] = df[name_col].apply(
+                    lambda x: normalizer.normalize(str(x)) if pd.notna(x) else ''
+                )
+        else:  # section == "III"
+            # Две колонки с наименованиями
+            payer_col = "Наименование плательщика-1"
+            receiver_col = "Наименование получателя-1"
+            
+            if payer_col in df.columns:
+                df[f"{payer_col} (норм.)"] = df[payer_col].apply(
+                    lambda x: normalizer.normalize(str(x)) if pd.notna(x) else ''
+                )
+            
+            if receiver_col in df.columns:
+                df[f"{receiver_col} (норм.)"] = df[receiver_col].apply(
+                    lambda x: normalizer.normalize(str(x)) if pd.notna(x) else ''
+                )
+        
+        return df
+    
     def save_to_excel(self, df: pd.DataFrame, output_path: str):
-        """Сохранить в Excel с правильными форматами"""
+        """Сохранить в Excel с правильными форматами и нормализованными именами"""
+        # Добавляем нормализованные имена
+        df = self._normalize_names(df)
+        
         df.to_excel(output_path, index=False, engine='openpyxl')
         
         # Применяем форматирование
@@ -351,4 +392,5 @@ class VBKHybridParser:
         wb.save(output_path)
         print(f"\n💾 Сохранено в: {output_path}")
         print(f"   Применен финансовый формат для {len(self.financial_col_indices)} колонок")
+        print(f"   Добавлены нормализованные имена контрагентов")
 

@@ -2,6 +2,7 @@
 """
 Chunk-based парсер для Выпуск 4-02
 Разбивает PDF на чанки по маркеру "Код, присвоенный номинальным держателем"
+Интегрирован с NameNormalizer для устранения дубликатов владельцев.
 """
 
 import re
@@ -10,10 +11,14 @@ from pathlib import Path
 from typing import List, Optional
 from dataclasses import dataclass
 
+# Импорт нормализатора
+from name_normalizer import get_normalizer
+
 @dataclass
 class OwnerRecord:
     owner_code: str
     full_name: Optional[str] = None
+    normalized_name: Optional[str] = None  # Нормализованное имя для группировки
     address: Optional[str] = None
     document_number: Optional[str] = None
     quantity: Optional[int] = None
@@ -163,9 +168,14 @@ class ChunkParser:
         if acc_match:
             account_number = acc_match.group(1)
         
+        # 7. Нормализация имени для группировки дубликатов
+        normalizer = get_normalizer()
+        normalized_name = normalizer.normalize(fio) if fio else None
+        
         return OwnerRecord(
             owner_code=owner_code,
             full_name=fio,
+            normalized_name=normalized_name,
             address=address,
             document_number=document_number,
             quantity=quantity,
@@ -182,7 +192,7 @@ class ChunkParser:
         ws.title = "Реестр владельцев"
         
         headers = ['Адрес регистрации', 'Количество в штуках', 'Код владельца', 
-                   'ФИО', 'Номер документа', 'Номер счета', 'Страница']
+                   'ФИО', 'ФИО (нормализованное)', 'Номер документа', 'Номер счета', 'Страница']
         ws.append(headers)
         
         for rec in records:
@@ -191,6 +201,7 @@ class ChunkParser:
                 rec.quantity or 0,
                 rec.owner_code or '',
                 rec.full_name or '',
+                rec.normalized_name or '',
                 rec.document_number or '',
                 rec.account_number or '',
                 rec.page_number or 0
