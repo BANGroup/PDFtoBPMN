@@ -2,7 +2,11 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#1a365d">
     <title>BPMN Viewer - Универсальный просмотрщик</title>
     <!-- bpmn-js styles -->
     <link rel="stylesheet" href="https://unpkg.com/bpmn-js@17.11.1/dist/assets/bpmn-js.css">
@@ -10,7 +14,13 @@
     <link rel="stylesheet" href="https://unpkg.com/bpmn-js@17.11.1/dist/assets/bpmn-font/css/bpmn.css">
     
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
+        /* iOS safe areas */
+        @supports (padding: env(safe-area-inset-top)) {
+            .header { padding-top: calc(12px + env(safe-area-inset-top)); }
+            body { padding-bottom: env(safe-area-inset-bottom); }
+        }
         
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
@@ -68,6 +78,35 @@
             align-items: center;
             gap: 6px;
             transition: all 0.2s;
+            touch-action: manipulation;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        
+        /* Mobile: larger touch targets */
+        @media (max-width: 768px) {
+            .btn { padding: 12px 16px; font-size: 1rem; min-height: 44px; }
+            .btn-zoom { padding: 12px 14px; min-width: 44px; min-height: 44px; justify-content: center; }
+            .header { padding: 8px 12px; flex-wrap: wrap; gap: 8px; }
+            .header-left { flex: 1; min-width: 200px; }
+            .toolbar { flex-wrap: wrap; justify-content: flex-end; }
+            .file-name { font-size: 0.8rem; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .logo { font-size: 1rem; }
+            .nav-bar { padding: 8px 12px; }
+            .breadcrumb-item { padding: 6px 10px; font-size: 0.8rem; }
+            .welcome h2 { font-size: 1.2rem; }
+            .welcome p { font-size: 0.9rem; }
+            .welcome .btn-open { padding: 14px 24px; }
+        }
+        
+        /* iPad landscape */
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .btn { padding: 10px 14px; }
+        }
+        
+        /* Hide drag text on mobile (drag doesn't work) */
+        @media (pointer: coarse) {
+            .welcome p:last-child { display: none; }
         }
         
         .btn-open { background: #4299e1; color: white; }
@@ -127,6 +166,21 @@
             flex-shrink: 0;
         }
         
+        /* Hide sidebar on mobile by default */
+        @media (max-width: 768px) {
+            .sidebar { 
+                position: fixed;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                z-index: 200;
+                transform: translateX(-100%);
+                transition: transform 0.3s ease;
+                box-shadow: 2px 0 10px rgba(0,0,0,0.2);
+            }
+            .sidebar.open { transform: translateX(0); }
+        }
+        
         .sidebar h3 {
             font-size: 0.75rem;
             text-transform: uppercase;
@@ -156,6 +210,13 @@
         #canvas {
             width: 100%;
             height: 100%;
+            touch-action: pan-x pan-y pinch-zoom;
+        }
+        
+        /* Prevent text selection on touch */
+        .canvas-container {
+            -webkit-user-select: none;
+            user-select: none;
         }
         
         /* Welcome screen */
@@ -262,6 +323,9 @@
             </button>
             <button class="btn btn-save" id="btnSave" onclick="saveFile()" disabled title="Сохранить (Ctrl+S)">
                 💾 Сохранить
+            </button>
+            <button class="btn btn-save" onclick="saveFileAs()" disabled id="btnSaveAs" style="background: #38a169;" title="Сохранить как...">
+                📥 Сохранить как
             </button>
             <span style="width: 1px; background: rgba(255,255,255,0.3); margin: 0 8px;"></span>
             <button class="btn btn-zoom" onclick="zoomOut()" title="Уменьшить">−</button>
@@ -463,10 +527,10 @@
                 // Update UI
                 document.getElementById('welcome').classList.add('hidden');
                 document.getElementById('navBar').classList.remove('hidden');
-                // sidebar removed
-                // buildProcessTree removed
                 
                 document.getElementById('fileName').textContent = name;
+                document.getElementById('btnSave').disabled = false;
+                document.getElementById('btnSaveAs').disabled = false;
                 
                 // Reset navigation
                 navigationStack = [];
@@ -508,6 +572,7 @@
                 
                 document.getElementById('fileName').textContent = handle.name;
                 document.getElementById('btnSave').disabled = false;
+                document.getElementById('btnSaveAs').disabled = false;
                 
                 // Reset navigation
                 navigationStack = [];
@@ -527,23 +592,67 @@
         
         // Save file
         async function saveFile() {
-            if (!fileHandle) {
-                showNotification('⚠️ Сначала откройте файл', 'info');
-                return;
-            }
-            
             try {
                 const result = await modeler.saveXML({ format: true });
+                
+                // If no fileHandle, ask user to pick save location
+                if (!fileHandle) {
+                    const fileName = document.getElementById('fileName').textContent || 'diagram.bpmn';
+                    fileHandle = await window.showSaveFilePicker({
+                        suggestedName: fileName,
+                        types: [{
+                            description: 'BPMN Files',
+                            accept: { 'application/xml': ['.bpmn'] }
+                        }]
+                    });
+                }
                 
                 const writable = await fileHandle.createWritable();
                 await writable.write(result.xml);
                 await writable.close();
                 
+                // Update filename in header
+                document.getElementById('fileName').textContent = fileHandle.name;
+                
                 markAsSaved();
                 showNotification('✅ Сохранено: ' + fileHandle.name, 'success');
                 
             } catch (err) {
-                showNotification('❌ Ошибка: ' + err.message, 'error');
+                if (err.name !== 'AbortError') {
+                    showNotification('❌ Ошибка: ' + err.message, 'error');
+                }
+            }
+        }
+        
+        // Save As (always shows picker)
+        async function saveFileAs() {
+            try {
+                const result = await modeler.saveXML({ format: true });
+                const fileName = document.getElementById('fileName').textContent || 'diagram.bpmn';
+                
+                const newHandle = await window.showSaveFilePicker({
+                    suggestedName: fileName,
+                    types: [{
+                        description: 'BPMN Files',
+                        accept: { 'application/xml': ['.bpmn'] }
+                    }]
+                });
+                
+                const writable = await newHandle.createWritable();
+                await writable.write(result.xml);
+                await writable.close();
+                
+                // Update to new file
+                fileHandle = newHandle;
+                document.getElementById('fileName').textContent = newHandle.name;
+                
+                markAsSaved();
+                showNotification('✅ Сохранено как: ' + newHandle.name, 'success');
+                
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    showNotification('❌ Ошибка: ' + err.message, 'error');
+                }
             }
         }
         
