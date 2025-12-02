@@ -24,14 +24,17 @@
 
 ```bash
 # 1. Активировать окружение
-cd ~/PDFtoBPMN
+cd /home/budnik_an/Obligations
 source DeepSeek-OCR/venv/bin/activate
 
-# 2. Запустить OCR сервис
-python -m uvicorn pdf_to_context.ocr_service.app:app --host 0.0.0.0 --port 8000
+# 2. Запустить OCR сервис (ВАЖНО: из корня проекта!)
+python -m uvicorn scripts.pdf_to_context.ocr_service.app:app --host 0.0.0.0 --port 8000
 
-# 3. Протестировать (в другом терминале)
-python test_russian_prompts.py
+# 3. Проверить здоровье сервиса
+curl http://localhost:8000/health
+
+# 4. Протестировать (в другом терминале)
+python scripts/utils/test_deepseek_ocr.py
 ```
 
 ---
@@ -93,9 +96,10 @@ python test_russian_prompts.py
 #### Вариант 1: Через API (curl)
 
 ```bash
-# Запустить сервис
+# Запустить сервис (из корня проекта!)
+cd /home/budnik_an/Obligations
 source DeepSeek-OCR/venv/bin/activate
-python -m uvicorn pdf_to_context.ocr_service.app:app --host 0.0.0.0 --port 8000 &
+python -m uvicorn scripts.pdf_to_context.ocr_service.app:app --host 0.0.0.0 --port 8000 &
 
 # Отправить изображение
 curl -X POST http://localhost:8000/ocr/figure \
@@ -679,6 +683,67 @@ EOF
 
 ## 🐛 Troubleshooting
 
+### ⚠️ Проблема 0: `ImportError: cannot import name 'LlamaFlashAttention2'` (ЧАСТАЯ!)
+
+**Симптом:**
+```
+ImportError: cannot import name 'LlamaFlashAttention2' from 'transformers.models.llama.modeling_llama'
+```
+
+**Причина:**  
+Установлена несовместимая версия библиотеки `transformers`. DeepSeek-OCR требует версию **4.46.3**, но pip мог обновить до 4.57+.
+
+**✅ РЕШЕНИЕ:**
+```bash
+# 1. Активируйте окружение
+source DeepSeek-OCR/venv/bin/activate
+
+# 2. Проверьте текущую версию
+pip show transformers | grep Version
+# Если показывает 4.5x.x - это проблема!
+
+# 3. Понизьте до правильной версии
+pip uninstall transformers -y
+pip install transformers==4.46.3
+
+# 4. Проверьте
+pip show transformers | grep Version
+# Должно быть: Version: 4.46.3
+
+# 5. Перезапустите OCR сервис
+python -m uvicorn scripts.pdf_to_context.ocr_service.app:app --host 0.0.0.0 --port 8000
+```
+
+**Важно:** НЕ обновляйте `transformers` выше 4.46.x!
+
+---
+
+### Проблема 0.1: `ModuleNotFoundError: No module named 'scripts'`
+
+**Симптом:**
+```
+ModuleNotFoundError: No module named 'scripts'
+```
+
+**Причина:**  
+Uvicorn запущен НЕ из корня проекта.
+
+**✅ РЕШЕНИЕ:**
+```bash
+# НЕПРАВИЛЬНО:
+cd DeepSeek-OCR
+uvicorn scripts.pdf_to_context.ocr_service.app:app ...  # ❌
+
+# ПРАВИЛЬНО:
+cd /home/budnik_an/Obligations  # Корень проекта!
+source DeepSeek-OCR/venv/bin/activate
+python -m uvicorn scripts.pdf_to_context.ocr_service.app:app --host 0.0.0.0 --port 8000  # ✅
+```
+
+**Важно:** Всегда запускайте OCR сервис из **корня проекта** (`/home/budnik_an/Obligations`).
+
+---
+
 ### Проблема 1: `nvidia-smi` не работает в WSL
 
 **Решение:**
@@ -1121,6 +1186,10 @@ du -sh ~/.cache/*
 
 ---
 
-**Последнее обновление:** 09.11.2025  
+**Последнее обновление:** 01.12.2025  
 **Статус:** Готово к использованию
+
+### История изменений:
+- **01.12.2025:** Добавлены troubleshooting секции для transformers версии и ModuleNotFoundError; исправлены пути запуска uvicorn
+- **09.11.2025:** Первоначальная версия
 

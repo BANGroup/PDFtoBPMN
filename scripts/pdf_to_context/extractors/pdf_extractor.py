@@ -21,6 +21,7 @@ from .native_extractor import NativeExtractor
 from .ocr_client import OCRClient
 from ..core.parser import PDFParser
 from ..core.structure_preserver import StructurePreserver
+from ..models.data_models import TextBlock, ImageBlock, DrawingBlock, TableBlock, OCRBlock
 
 
 class PDFExtractor(BaseExtractor):
@@ -77,7 +78,7 @@ class PDFExtractor(BaseExtractor):
         if self.enable_ocr and self.ocr_client:
             self.structure_preserver = StructurePreserver(
                 ocr_client=self.ocr_client,
-                min_image_area=min_image_area
+                min_area=min_image_area
             )
         else:
             self.structure_preserver = None
@@ -116,7 +117,22 @@ class PDFExtractor(BaseExtractor):
                 
                 # Шаг 2: OCR обработка (если включен)
                 if self.enable_ocr and self.structure_preserver:
-                    page_data = self.structure_preserver.process_page(page_data, file_path)
+                    # Объединяем все блоки для обработки
+                    all_blocks = (
+                        page_data.get("text_blocks", []) +
+                        page_data.get("image_blocks", []) +
+                        page_data.get("drawing_blocks", []) +
+                        page_data.get("table_blocks", [])
+                    )
+                    
+                    # Обрабатываем через StructurePreserver
+                    processed_blocks = self.structure_preserver.process_structure(
+                        all_blocks,
+                        page_num
+                    )
+                    
+                    # Разделяем обратно по типам
+                    page_data = self._split_blocks_by_type(processed_blocks)
                 
                 # Добавляем номер страницы
                 page_data["page_num"] = page_num
@@ -129,4 +145,36 @@ class PDFExtractor(BaseExtractor):
                 pages_data.append(page_data)
         
         return pages_data
+    
+    def _split_blocks_by_type(self, blocks: list) -> dict:
+        """
+        Разделить блоки обратно по типам
+        
+        Args:
+            blocks: Список блоков (TextBlock, OCRBlock, DrawingBlock, TableBlock)
+        
+        Returns:
+            Dict с ключами: text_blocks, image_blocks, drawing_blocks, table_blocks, ocr_blocks
+        """
+        result = {
+            "text_blocks": [],
+            "image_blocks": [],
+            "drawing_blocks": [],
+            "table_blocks": [],
+            "ocr_blocks": []
+        }
+        
+        for block in blocks:
+            if isinstance(block, TextBlock):
+                result["text_blocks"].append(block)
+            elif isinstance(block, OCRBlock):
+                result["ocr_blocks"].append(block)
+            elif isinstance(block, ImageBlock):
+                result["image_blocks"].append(block)
+            elif isinstance(block, DrawingBlock):
+                result["drawing_blocks"].append(block)
+            elif isinstance(block, TableBlock):
+                result["table_blocks"].append(block)
+        
+        return result
 
