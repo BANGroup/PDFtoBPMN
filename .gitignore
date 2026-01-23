@@ -71,3 +71,7 @@ input_data/test_ocr.png
 test_*.py
 !scripts/utils/test_*.py  # Разрешить утилиты в scripts/utils/
 
+
+# Дополнительные рабочие папки
+input2
+output2
