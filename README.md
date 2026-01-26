@@ -483,7 +483,8 @@ PDFtoBPMN/
 ├── docs/
 │   ├── Architecture.md             # Техническая архитектура
 │   ├── BPMN_Elements_Reference.md  # Справочник BPMN 2.0
-│   └── DeepSeek_OCR_Guide.md       # Установка OCR
+│   ├── DeepSeek_OCR_Guide.md       # Установка OCR
+│   └── Roadmap_GraphRAG.md         # 🆕 Roadmap: Graph RAG и VLM
 │
 ├── .cursorrules              # 🤖 Правила для AI (методология)
 ├── README.md                 # Этот файл
@@ -780,6 +781,7 @@ bash scripts/tests/smoke_test.sh
 | **[docs/BPMN_Elements_Reference.md](docs/BPMN_Elements_Reference.md)** | Полный справочник BPMN 2.0 |
 | **[docs/DeepSeek_OCR_Guide.md](docs/DeepSeek_OCR_Guide.md)** | Установка и настройка OCR |
 | **[docs/CURSOR_AI_TOOLS_GUIDE.md](docs/CURSOR_AI_TOOLS_GUIDE.md)** | 🛠️ Полное руководство по инструментам Cursor AI |
+| **[docs/Roadmap_GraphRAG.md](docs/Roadmap_GraphRAG.md)** | 🗺️ **NEW** Roadmap: Graph RAG и современные VLM |
 | **[Changelog.md](Changelog.md)** | История всех изменений |
 | **[output/Integrated_Pipeline/](output/Integrated_Pipeline/)** | 🔗 Интегрированный пайплайн обязательств |
 
@@ -935,20 +937,60 @@ grep -c '<bpmn:subProcess' output/Integrated_Pipeline/Obligations_Pipeline.bpmn 
 
 ---
 
+## 🐳 Docker VLM OCR (Распределённая обработка)
+
+Для обработки документов на разных машинах с разными GPU:
+
+### Архитектура
+
+```
+Машина с 16GB (RTX 5080)          Сервер с 24GB+ (RTX 5090)
+├── qwen_local (2B, ~4GB)    →→→  docker/qwen-vlm-service (7B)
+└── qwen_remote (клиент)          └── http://server:8001
+```
+
+### Использование
+
+```bash
+# Локально (16GB GPU)
+python3 scripts/utils/run_document.py input/doc.pdf --ocr-service qwen_local
+
+# Через Docker на сервере (24GB+ GPU)
+cd docker && docker compose --profile large up -d
+
+# Клиент → сервер
+export QWEN_REMOTE_URL=http://server:8001
+python3 scripts/utils/run_document.py input/doc.pdf --ocr-service qwen_remote
+```
+
+Подробнее: [`docker/README.md`](docker/README.md)
+
+---
+
 ## 🚧 Развитие проекта
+
+### Реализовано (Этап 0)
+
+- [x] Qwen2-VL-2B локальный OCR (русский, таблицы, Markdown)
+- [x] Docker инфраструктура для VLM (2B/7B модели)
+- [x] Factory с автовыбором: `qwen`, `qwen_local`, `qwen_remote`
+- [x] PyTorch 2.10.0+cu129 (полная поддержка RTX 50-серии)
 
 ### В разработке
 
+- [ ] Тестирование 7B на RTX 5090
+- [ ] DocLayout-YOLO для детекции структуры
 - [ ] Экспорт в другие форматы для распечатки на А4
 - [ ] Внедрение Tool calls
 
-### Планируется
+### Планируется (Graph RAG)
 
-- [ ] **Поддержка дополнительных входных форматов:**
-  - [ ] TXT (текстовые файлы) - определение структуры по отступам
-- [ ] Веб-интерфейс для загрузки документов
-- [ ] Batch-обработка множества документов
-- [ ] Сравнение версий процессов
+- [ ] **Этап 1:** Data Layer — парсинг RACI/Pipeline/BPMN в граф
+- [ ] **Этап 2:** Basic Graph — NetworkX, визуализация
+- [ ] **Этап 3:** Vector RAG — chunking, embeddings, retrieval
+- [ ] **Этап 4:** Graph RAG — Neo4j, гибридный поиск
+
+Подробнее: [`docs/Roadmap_GraphRAG.md`](docs/Roadmap_GraphRAG.md)
 
 ---
 
@@ -959,4 +1001,4 @@ grep -c '<bpmn:subProcess' output/Integrated_Pipeline/Obligations_Pipeline.bpmn 
 
 ---
 
-*Последнее обновление: 11.11.2025*
+*Последнее обновление: 26.01.2026*

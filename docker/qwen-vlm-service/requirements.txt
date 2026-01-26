@@ -1,0 +1,22 @@
+# Qwen VLM Service Dependencies
+# Версии зафиксированы для воспроизводимости
+
+# Core
+torch>=2.4.0
+transformers>=4.45.0
+accelerate>=0.34.0
+
+# Qwen VL utilities
+qwen-vl-utils>=0.0.8
+
+# API
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.9.0
+python-multipart>=0.0.12
+
+# Image processing
+Pillow>=10.4.0
+
+# Optional: Flash Attention (для USE_FLASH_ATTENTION=true)
+# flash-attn>=2.6.0  # Раскомментировать если нужно

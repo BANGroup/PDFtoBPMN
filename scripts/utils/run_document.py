@@ -17,9 +17,14 @@
     python3 run_document.py input/document.docx --output output/process/process_OCR.md
     python3 run_document.py input/scan.pdf --enable-ocr
     python3 run_document.py input/data.xlsx --no-images
+    
+    # Локальные документы (автомаршрутизация: input2/ → output2/)
+    python3 run_document.py input2/document.pdf
+    python3 run_document.py input2/doc.docx --output-dir output2
 
 Автор: PDFtoBPMN Project
 Дата: 11.11.2025
+Обновлено: 26.01.2026 - добавлена маршрутизация input2/ → output2/
 """
 
 import sys
@@ -184,9 +189,18 @@ def main():
   
   # Обработать XLSX без извлечения изображений
   python3 run_document.py input/data.xlsx --no-images
+  
+  # ЛОКАЛЬНЫЕ ДОКУМЕНТЫ (не попадают в git):
+  # Автомаршрутизация: input2/ → output2/
+  python3 run_document.py input2/document.pdf
+  python3 run_document.py input2/confidential.docx
+  
+  # Явное указание выходной директории
+  python3 run_document.py input2/doc.pdf --output-dir output2
 
 Автоматическое создание output папки:
   Если --output не указан, создается: output/<base_name>/<base_name>_OCR.md
+  Для файлов из input2/ создается: output2/<base_name>/<base_name>_OCR.md
   Базовое имя извлекается из имени файла (убираются скобки, спецсимволы)
         """
     )
@@ -246,6 +260,13 @@ def main():
         help='Проверить окружение перед обработкой (ОС, Python, кодировки, зависимости)'
     )
     
+    parser.add_argument(
+        '--output-dir',
+        type=str,
+        default=None,
+        help='Базовая директория для вывода (по умолчанию: auto - output/ или output2/ в зависимости от input)'
+    )
+    
     args = parser.parse_args()
     
     # ===== ПРОВЕРКА ОКРУЖЕНИЯ (опционально) =====
@@ -295,12 +316,28 @@ def main():
     else:
         # Автоматическое создание output пути
         base_name = clean_document_name(input_path.name)
-        output_dir = project_root / "output" / base_name
+        
+        # Определение базовой директории для вывода
+        if args.output_dir:
+            # Явно указана директория
+            base_output_dir = Path(args.output_dir)
+        else:
+            # Автоматическая маршрутизация: input2/ → output2/, иначе output/
+            input_str = str(input_path.resolve())
+            input2_path = str((project_root / "input2").resolve())
+            
+            if input_str.startswith(input2_path):
+                base_output_dir = project_root / "output2"
+                print(f"📍 Маршрутизация: input2/ → output2/")
+            else:
+                base_output_dir = project_root / "output"
+        
+        output_dir = base_output_dir / base_name
         output_path = output_dir / f"{base_name}_OCR.md"
         
         # Создать папку
         output_dir.mkdir(parents=True, exist_ok=True)
-        print(f"📁 Автоматически создана папка: {output_dir.relative_to(project_root)}")
+        print(f"📁 Автоматически создана папка: {output_dir.relative_to(project_root) if output_dir.is_relative_to(project_root) else output_dir}")
     
     # Вывод информации
     print(f"\n{'='*60}")

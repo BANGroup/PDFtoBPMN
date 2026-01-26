@@ -59,9 +59,10 @@ openpyxl>=3.1.0  # Парсинг XLSX документов (таблицы, ф�
 # ========================================
 # OCR SERVICE DEPENDENCIES (опциональные)
 # ========================================
-# Два варианта OCR (выбирается автоматически):
-#   1. DeepSeek-OCR (GPU, высокая точность 95-99%)
+# Варианты OCR (выбирается автоматически или явно):
+#   1. DeepSeek-OCR (GPU, высокая точность 95-99%) — по умолчанию
 #   2. PaddleOCR (CPU fallback, хорошая точность 88-93%)
+#   3. 🆕 Qwen2.5-VL (GPU, state-of-the-art ~75%) — альтернатива
 
 # CPU-based OCR (легкая установка, работает без GPU)
 paddlepaddle>=2.5.0  # PaddlePaddle - фреймворк от Baidu для PaddleOCR
@@ -78,6 +79,53 @@ pydantic>=2.0.0  # Валидация данных
 
 # File handling
 python-multipart>=0.0.6  # Обработка multipart/form-data для загрузки файлов
+
+# ========================================
+# 🆕 STAGE 0: LAYOUT DETECTION (опционально)
+# ========================================
+# DocLayout-YOLO - детекция структурных элементов документа
+# Установка:
+#   pip install doclayout-yolo
+#
+# Возможности:
+#   - 19 категорий layout (text, title, figure, table, caption...)
+#   - Высокая скорость (YOLO backbone)
+#   - Предобученная модель на DocSynth-300K
+#
+# Использование:
+#   from scripts.pdf_to_context.extractors import get_layout_detector
+#   LayoutDetector, is_available = get_layout_detector()
+#   if is_available():
+#       detector = LayoutDetector()
+#       elements = detector.detect(image_bytes)
+#
+# ВАЖНО: Graceful degradation - работает без этой зависимости!
+#
+# doclayout-yolo>=0.0.4  # Раскомментировать для установки
+
+# ========================================
+# 🆕 STAGE 0: QWEN VL OCR (альтернатива)
+# ========================================
+# Qwen2.5-VL - альтернативный VLM-based OCR
+# Требует: torch, transformers, accelerate
+#
+# Установка (если нужна альтернатива DeepSeek):
+#   pip install transformers accelerate
+#
+# Использование:
+#   from scripts.pdf_to_context.ocr_service.factory import OCRServiceFactory
+#   service = OCRServiceFactory.create(service_type="qwen")
+#
+# Модели:
+#   - Qwen/Qwen2.5-VL-2B-Instruct (~6GB VRAM)
+#   - Qwen/Qwen2.5-VL-7B-Instruct (~16GB VRAM) — рекомендуется
+#
+# ВАЖНО: 
+#   - Это АЛЬТЕРНАТИВА DeepSeek, НЕ замена
+#   - По умолчанию используется DeepSeek (как раньше)
+#   - Qwen включается явно: service_type="qwen"
+#
+# accelerate>=0.25.0  # Раскомментировать для Qwen VL
 
 # ========================================
 # DEVELOPMENT DEPENDENCIES (для разработки)

@@ -1,0 +1,105 @@
+# Docker Compose для VLM OCR сервисов
+#
+# Профили:
+#   - default: Qwen2-VL-2B (для 16GB VRAM)
+#   - large: Qwen2-VL-7B (для 24GB+ VRAM)
+#
+# Использование:
+#   docker compose up                    # 2B модель (default)
+#   docker compose --profile large up    # 7B модель
+#
+# Или с явным выбором модели:
+#   QWEN_MODEL=Qwen/Qwen2-VL-7B-Instruct docker compose up
+
+version: "3.8"
+
+services:
+  # ============================================================
+  # Qwen VLM Service (2B - default для 16GB)
+  # ============================================================
+  qwen-vlm-2b:
+    build:
+      context: ./qwen-vlm-service
+      dockerfile: Dockerfile
+    image: qwen-vlm-service:2b
+    container_name: qwen-vlm-2b
+    ports:
+      - "8001:8001"
+    environment:
+      - QWEN_MODEL=Qwen/Qwen2-VL-2B-Instruct
+      - MAX_NEW_TOKENS=2048
+      - USE_FLASH_ATTENTION=false
+    volumes:
+      - qwen-models:/app/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # ============================================================
+  # Qwen VLM Service (7B - для 24GB+ VRAM)
+  # ============================================================
+  qwen-vlm-7b:
+    build:
+      context: ./qwen-vlm-service
+      dockerfile: Dockerfile
+    image: qwen-vlm-service:7b
+    container_name: qwen-vlm-7b
+    profiles:
+      - large
+    ports:
+      - "8001:8001"
+    environment:
+      - QWEN_MODEL=Qwen/Qwen2-VL-7B-Instruct
+      - MAX_NEW_TOKENS=2048
+      - USE_FLASH_ATTENTION=false
+    volumes:
+      - qwen-models:/app/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s  # Больше времени для 7B
+
+  # ============================================================
+  # DeepSeek OCR Service (legacy, опционально)
+  # ============================================================
+  deepseek-ocr:
+    image: deepseek-ocr:latest
+    container_name: deepseek-ocr
+    profiles:
+      - deepseek
+    ports:
+      - "8000:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  qwen-models:
+    name: qwen-vlm-models
+    driver: local

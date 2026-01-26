@@ -75,3 +75,8 @@ test_*.py
 # Дополнительные рабочие папки
 input2
 output2
+
+# Docker
+docker/**/models/
+docker/**/.cache/
+*.tar

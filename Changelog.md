@@ -6,6 +6,87 @@
 
 ---
 
+## [26-01-2026] - Этап 0: Quick Wins (Layout Detection + VLM OCR)
+
+### Добавлено
+
+**Виртуальное окружение venv с полной поддержкой RTX 5080:**
+- ✅ Создано изолированное окружение `venv/` для проекта
+- ✅ PyTorch 2.10.0+cu129 — **полная поддержка sm_120 (Blackwell)**
+- ✅ CUDA 12.9 — нативная поддержка RTX 50-серии
+- ✅ Никаких warnings о несовместимости GPU
+- ✅ transformers 5.0.0, accelerate 1.12.0, qwen-vl-utils 0.0.14
+- ✅ pdfplumber для извлечения таблиц
+- ✅ Все 15 тестов прошли успешно
+
+**Тестирование Qwen VLM на реальных документах:**
+- ✅ Qwen2-VL-2B-Instruct успешно распознаёт русский текст
+- ✅ Понимает структуру таблиц, выводит в Markdown
+- ✅ VRAM: ~4-5GB, время inference: ~60 сек
+- ✅ Обновлен `qwen_service.py`: модель по умолчанию Qwen2-VL-2B (стабильная)
+- ✅ flash_attention отключен по умолчанию (требует отдельной установки)
+
+**Docker инфраструктура для VLM:**
+- ✅ Создан `docker/qwen-vlm-service/` — FastAPI микросервис для Qwen VLM
+- ✅ Dockerfile с поддержкой CUDA и разных моделей (2B/7B)
+- ✅ docker-compose.yml с профилями (default=2B, large=7B)
+- ✅ `QwenRemoteService` — клиент для подключения к Docker
+- ✅ Factory обновлён: `qwen_local`, `qwen_remote`, `qwen` (автовыбор)
+- ✅ Переменная окружения `QWEN_REMOTE_URL` для настройки
+
+**Roadmap GraphRAG (`docs/Roadmap_GraphRAG.md`):**
+- ✅ Создан план развития от текущего состояния до Graph RAG (6-9 недель)
+- ✅ Исследование современных VLM для OCR: Qwen2.5-VL, olmOCR, InternVL2, GOT-OCR
+- ✅ Исследование Layout Detection: DocLayout-YOLO, YOLO v12, Surya
+- ✅ Исследование Table Recognition: PP-StructureV2, Table Transformer
+- ✅ Сравнительный анализ с рекомендациями для каждого компонента
+- ✅ 5 этапов реализации: Quick Wins → Data Layer → Basic Graph → Vector RAG → Graph RAG
+- ✅ **ПРИНЦИП ОБРАТНОЙ СОВМЕСТИМОСТИ** зафиксирован в документе
+
+**Layout Detection (`scripts/pdf_to_context/extractors/layout_detector.py`):**
+- ✅ Новый компонент LayoutDetector на базе DocLayout-YOLO
+- ✅ 19 категорий layout: text, title, figure, table, caption, list, header, footer...
+- ✅ Graceful degradation: работает без doclayout-yolo (возвращает пустой список)
+- ✅ LayoutCategory enum для типизации категорий
+- ✅ Интеграция с PyMuPDF (detect_from_page)
+
+**Qwen VL OCR (`scripts/pdf_to_context/ocr_service/qwen_service.py`):**
+- ✅ Альтернативный VLM-based OCR на базе Qwen2.5-VL
+- ✅ Поддержка моделей 2B/7B/72B
+- ✅ Предустановленные промпты: default, table, bpmn, russian, formula
+- ✅ Graceful degradation: работает без transformers
+- ✅ Не заменяет DeepSeek — альтернатива по выбору
+
+**OCRServiceFactory обновлен:**
+- ✅ Новый параметр `service_type`: "auto", "deepseek", "qwen", "paddle"
+- ✅ Метод `create_qwen_only()` для явного выбора Qwen VL
+- ✅ Метод `list_available_services()` для диагностики
+- ✅ Полная обратная совместимость: старый API работает без изменений
+
+**Тесты (`scripts/tests/test_stage0_components.py`):**
+- ✅ 15 тестов: LayoutDetector, QwenVLService, OCRServiceFactory, обратная совместимость
+- ✅ Все тесты прошли успешно
+
+**Локальные папки для конфиденциальных документов:**
+- ✅ Создана папка `input2/` для локальных входных документов
+- ✅ Создана папка `output2/` для локальных результатов обработки
+- Обе папки исключены из git (в `.gitignore`)
+- Запрещено использовать симлинки (только реальные файлы/папки)
+
+**Автоматическая маршрутизация:**
+- ✅ Обновлен `scripts/utils/run_document.py` - добавлен флаг `--output-dir`
+- ✅ Автомаршрутизация: документы из `input2/` → результаты в `output2/`
+- Правило: `input/` → `output/`, `input2/` → `output2/`
+
+### Изменено
+
+**Обновлена документация:**
+- ✅ `.cursorrules` - добавлена ссылка на Roadmap_GraphRAG.md
+- ✅ `README.md` - добавлена ссылка на Roadmap_GraphRAG.md в таблицу документации
+- ✅ `.cursorrules` БЛОК 2 - добавлено описание папок `input2/` и `output2/`
+
+---
+
 ## [02-12-2025] - Улучшение визуализации BPMN, трассировка и обновление методологии
 
 ### Добавлено
