@@ -81,15 +81,24 @@ services:
       start_period: 180s  # Больше времени для 7B
 
   # ============================================================
-  # DeepSeek OCR Service (legacy, опционально)
+  # DeepSeek-OCR Service (универсальный для любых GPU)
   # ============================================================
   deepseek-ocr:
-    image: deepseek-ocr:latest
+    build:
+      context: ./deepseek-ocr-service
+      dockerfile: Dockerfile
+    image: deepseek-ocr-service:latest
     container_name: deepseek-ocr
     profiles:
       - deepseek
     ports:
       - "8000:8000"
+    environment:
+      - DEEPSEEK_MODEL=deepseek-ai/DeepSeek-OCR
+      - USE_FLASH_ATTENTION=auto  # auto, true, false
+      - MAX_NEW_TOKENS=4096
+    volumes:
+      - deepseek-models:/app/models
     deploy:
       resources:
         reservations:
@@ -98,8 +107,51 @@ services:
               count: 1
               capabilities: [gpu]
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
+
+  # ============================================================
+  # DeepSeek-OCR (без flash_attn - гарантированно работает)
+  # ============================================================
+  deepseek-ocr-safe:
+    build:
+      context: ./deepseek-ocr-service
+      dockerfile: Dockerfile
+    image: deepseek-ocr-service:safe
+    container_name: deepseek-ocr-safe
+    profiles:
+      - deepseek-safe
+    ports:
+      - "8000:8000"
+    environment:
+      - DEEPSEEK_MODEL=deepseek-ai/DeepSeek-OCR
+      - USE_FLASH_ATTENTION=false  # Гарантированно работает
+      - MAX_NEW_TOKENS=4096
+    volumes:
+      - deepseek-models:/app/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
 
 volumes:
   qwen-models:
     name: qwen-vlm-models
+    driver: local
+  deepseek-models:
+    name: deepseek-ocr-models
     driver: local

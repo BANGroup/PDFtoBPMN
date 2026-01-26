@@ -1,17 +1,19 @@
-# Docker для VLM OCR сервисов
+# Docker для OCR сервисов
 
 ## Архитектура
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Локальная машина (16GB VRAM)                          │
-│  ├── service_type="qwen_local" → Qwen2-VL-2B          │
-│  └── service_type="qwen_remote" → Docker (7B/72B)     │
+│  Локальная машина                                       │
+│  ├── qwen_local → Qwen2-VL-2B (16GB VRAM)             │
+│  ├── qwen_remote → Docker Qwen (7B+)                   │
+│  └── deepseek → Docker DeepSeek-OCR                    │
 └─────────────────────────────────────────────────────────┘
-                           ↓ HTTP :8001
+              ↓ HTTP :8001 (Qwen)    ↓ HTTP :8000 (DeepSeek)
 ┌─────────────────────────────────────────────────────────┐
-│  Удалённый сервер с RTX 5090 (24GB+ VRAM)             │
-│  └── docker/qwen-vlm-service (Qwen2-VL-7B)            │
+│  Docker сервисы (любая GPU: 4080/5080/5090/H100)       │
+│  ├── qwen-vlm-service (порт 8001)                      │
+│  └── deepseek-ocr-service (порт 8000)                  │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -50,10 +52,35 @@ python3 scripts/utils/run_document.py input/doc.pdf --ocr-service qwen
 
 ## Профили Docker Compose
 
-| Профиль | Модель | VRAM | Команда |
-|---------|--------|------|---------|
-| **default** | Qwen2-VL-2B | ~4GB | `docker compose up` |
-| **large** | Qwen2-VL-7B | ~14GB | `docker compose --profile large up` |
+| Профиль | Сервис | Модель | VRAM | Порт | Команда |
+|---------|--------|--------|------|------|---------|
+| **default** | Qwen | 2B | ~4GB | 8001 | `docker compose up` |
+| **large** | Qwen | 7B | ~14GB | 8001 | `docker compose --profile large up` |
+| **deepseek** | DeepSeek | 3B | ~8GB | 8000 | `docker compose --profile deepseek up` |
+| **deepseek-safe** | DeepSeek | 3B (no flash) | ~10GB | 8000 | `docker compose --profile deepseek-safe up` |
+
+### DeepSeek-OCR
+
+```bash
+# С автоопределением flash_attn (быстрее если работает)
+docker compose --profile deepseek up -d
+
+# Без flash_attn (гарантированно работает на любой GPU)
+docker compose --profile deepseek-safe up -d
+
+# Проверка
+curl http://localhost:8000/health
+```
+
+**Поддерживаемые GPU:**
+- RTX 4080/4090 (Ada Lovelace, sm_89)
+- RTX 5080/5090 (Blackwell, sm_120)
+- H100/A100 (Hopper/Ampere, sm_90/sm_80)
+
+**flash_attn:**
+- `USE_FLASH_ATTENTION=auto` — попытка использовать, fallback если не работает
+- `USE_FLASH_ATTENTION=true` — обязательно (ошибка если не работает)
+- `USE_FLASH_ATTENTION=false` — отключить (медленнее, но универсально)
 
 ## API
 

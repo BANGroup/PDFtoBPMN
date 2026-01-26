@@ -34,6 +34,13 @@
 - ✅ Factory обновлён: `qwen_local`, `qwen_remote`, `qwen` (автовыбор)
 - ✅ Переменная окружения `QWEN_REMOTE_URL` для настройки
 
+**Docker для DeepSeek-OCR (универсальный):**
+- ✅ Создан `docker/deepseek-ocr-service/` — FastAPI микросервис
+- ✅ Поддержка любых GPU: RTX 4080/4090, RTX 5080/5090, H100/A100
+- ✅ flash_attn опционален: `USE_FLASH_ATTENTION=auto|true|false`
+- ✅ Профиль `deepseek` (с flash_attn) и `deepseek-safe` (без)
+- ✅ Проверен на RTX 5080: DeepSeek-OCR работает локально
+
 **Roadmap GraphRAG (`docs/Roadmap_GraphRAG.md`):**
 - ✅ Создан план развития от текущего состояния до Graph RAG (6-9 недель)
 - ✅ Исследование современных VLM для OCR: Qwen2.5-VL, olmOCR, InternVL2, GOT-OCR
