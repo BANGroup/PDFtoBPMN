@@ -437,6 +437,15 @@ ocr = OCRServiceFactory.create(service_type="deepseek")
 - [x] Локальный DeepSeek проверен на RTX 5080
 - [ ] Docker образ собран и протестирован
 
+**Рекомендации по GPU:**
+
+| GPU | VRAM | Модели | Примечание |
+|-----|------|--------|------------|
+| RTX 5070 | 8GB | Qwen2-VL-2B | Минимум, без DeepSeek |
+| RTX 4080/5080 | 16GB | Qwen 2B + DeepSeek | Стандарт |
+| RTX 4090/5090 | 24GB | Qwen 7B + DeepSeek | Полная конфигурация |
+| H100/A100 | 40-80GB | Все модели | Enterprise |
+
 #### 0.6 Обогащение IRBlock метаданными (TODO)
 
 ```python

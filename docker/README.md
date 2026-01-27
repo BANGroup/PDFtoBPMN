@@ -59,6 +59,43 @@ python3 scripts/utils/run_document.py input/doc.pdf --ocr-service qwen
 | **deepseek** | DeepSeek | 3B | ~8GB | 8000 | `docker compose --profile deepseek up` |
 | **deepseek-safe** | DeepSeek | 3B (no flash) | ~10GB | 8000 | `docker compose --profile deepseek-safe up` |
 
+## Рекомендации по GPU
+
+| GPU | VRAM | Рекомендуемые модели | Профиль |
+|-----|------|---------------------|---------|
+| **RTX 5070** | 8GB | Qwen2-VL-2B | `default` |
+| **RTX 4080/5080** | 16GB | Qwen2-VL-2B, DeepSeek-OCR | `default`, `deepseek` |
+| **RTX 4090/5090** | 24GB | Qwen2-VL-7B, DeepSeek-OCR | `large`, `deepseek` |
+| **H100/A100** | 40-80GB | Все модели | Любой |
+
+### RTX 5070 (8GB) — минимальная конфигурация
+
+```bash
+# Только Qwen 2B
+docker compose up -d
+# DeepSeek НЕ рекомендуется (может не хватить VRAM)
+```
+
+### RTX 5080 (16GB) — стандартная конфигурация
+
+```bash
+# Qwen 2B (локально) + DeepSeek (опционально)
+docker compose up -d  # Qwen 2B
+docker compose --profile deepseek up -d  # DeepSeek
+
+# ⚠️ НЕ запускать одновременно — VRAM не хватит!
+```
+
+### RTX 5090 (24GB) — полная конфигурация
+
+```bash
+# Qwen 7B (лучшее качество)
+docker compose --profile large up -d
+
+# Или DeepSeek
+docker compose --profile deepseek up -d
+```
+
 ### DeepSeek-OCR
 
 ```bash
