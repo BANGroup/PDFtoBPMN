@@ -735,6 +735,156 @@ def generate_html_viewer(graph_json: str, metadata: Dict) -> str:
         // Данные графа
         const graphData = {graph_json};
         
+        // ========================================
+        // РАСЧЁТ ПОЗИЦИЙ УЗЛОВ ПО СЕТКЕ
+        // ========================================
+        function calculateGridPositions(elements, maxPerRow = 12) {{
+            const nodeSpacingX = 120;  // Расстояние по горизонтали
+            const nodeSpacingY = 120;  // Расстояние по вертикали
+            const levelGap = 80;       // Дополнительный отступ между логическими уровнями
+            
+            // Уровни иерархии (порядок сверху вниз)
+            const levelOrder = ['root', 'process_group', 'process', 'doc_type', 'document'];
+            
+            // Группируем узлы по типам
+            const nodesByType = {{}};
+            const nodes = elements.filter(el => !el.data.source);  // Только узлы
+            const edges = elements.filter(el => el.data.source);   // Только рёбра
+            
+            nodes.forEach(node => {{
+                const type = node.data.type || 'unknown';
+                if (!nodesByType[type]) nodesByType[type] = [];
+                nodesByType[type].push(node);
+            }});
+            
+            // Строим дерево родителей для сортировки
+            const parentMap = {{}};
+            edges.forEach(edge => {{
+                parentMap[edge.data.target] = edge.data.source;
+            }});
+            
+            // Функция для получения родительского узла
+            function getParent(nodeId) {{
+                return parentMap[nodeId];
+            }}
+            
+            // Сортируем узлы внутри типа по родителю (группировка)
+            function sortByParent(nodesArray) {{
+                return nodesArray.sort((a, b) => {{
+                    const parentA = getParent(a.data.id) || '';
+                    const parentB = getParent(b.data.id) || '';
+                    if (parentA !== parentB) return parentA.localeCompare(parentB);
+                    return (a.data.label || '').localeCompare(b.data.label || '');
+                }});
+            }}
+            
+            let currentY = 50;
+            
+            // Обрабатываем каждый уровень
+            levelOrder.forEach((levelType, levelIndex) => {{
+                const levelNodes = nodesByType[levelType] || [];
+                if (levelNodes.length === 0) return;
+                
+                // Сортируем по родителю
+                const sortedNodes = sortByParent(levelNodes);
+                
+                // Разбиваем на ряды по лимиту
+                const rows = [];
+                for (let i = 0; i < sortedNodes.length; i += maxPerRow) {{
+                    rows.push(sortedNodes.slice(i, i + maxPerRow));
+                }}
+                
+                // Позиционируем каждый ряд
+                rows.forEach((row, rowIndex) => {{
+                    const rowWidth = row.length * nodeSpacingX;
+                    const startX = -rowWidth / 2 + nodeSpacingX / 2;
+                    
+                    row.forEach((node, colIndex) => {{
+                        node.position = {{
+                            x: startX + colIndex * nodeSpacingX,
+                            y: currentY
+                        }};
+                    }});
+                    
+                    currentY += nodeSpacingY;
+                }});
+                
+                // Добавляем отступ между логическими уровнями
+                currentY += levelGap;
+            }});
+            
+            return elements;
+        }}
+        
+        // Функция пересчёта позиций для существующего cy объекта
+        function recalculateGridPositions(cy, maxPerRow = 15) {{
+            const nodeSpacingX = 120;
+            const nodeSpacingY = 120;
+            const levelGap = 80;
+            
+            const levelOrder = ['root', 'process_group', 'process', 'doc_type', 'document'];
+            
+            // Группируем узлы по типам
+            const nodesByType = {{}};
+            cy.nodes().forEach(node => {{
+                const type = node.data('type') || 'unknown';
+                if (!nodesByType[type]) nodesByType[type] = [];
+                nodesByType[type].push(node);
+            }});
+            
+            // Строим карту родителей
+            const parentMap = {{}};
+            cy.edges().forEach(edge => {{
+                parentMap[edge.data('target')] = edge.data('source');
+            }});
+            
+            function getParent(nodeId) {{
+                return parentMap[nodeId];
+            }}
+            
+            function sortByParent(nodesArray) {{
+                return nodesArray.sort((a, b) => {{
+                    const parentA = getParent(a.data('id')) || '';
+                    const parentB = getParent(b.data('id')) || '';
+                    if (parentA !== parentB) return parentA.localeCompare(parentB);
+                    return (a.data('label') || '').localeCompare(b.data('label') || '');
+                }});
+            }}
+            
+            let currentY = 50;
+            
+            levelOrder.forEach(levelType => {{
+                const levelNodes = nodesByType[levelType] || [];
+                if (levelNodes.length === 0) return;
+                
+                const sortedNodes = sortByParent(levelNodes);
+                
+                const rows = [];
+                for (let i = 0; i < sortedNodes.length; i += maxPerRow) {{
+                    rows.push(sortedNodes.slice(i, i + maxPerRow));
+                }}
+                
+                rows.forEach(row => {{
+                    const rowWidth = row.length * nodeSpacingX;
+                    const startX = -rowWidth / 2 + nodeSpacingX / 2;
+                    
+                    row.forEach((node, colIndex) => {{
+                        node.position({{
+                            x: startX + colIndex * nodeSpacingX,
+                            y: currentY
+                        }});
+                    }});
+                    
+                    currentY += nodeSpacingY;
+                }});
+                
+                currentY += levelGap;
+            }});
+        }}
+        
+        // Применяем расчёт позиций
+        calculateGridPositions(graphData.elements, 15);
+        
         // Инициализация Cytoscape
         const cy = cytoscape({{
             container: document.getElementById('cy'),
@@ -897,15 +1047,9 @@ def generate_html_viewer(graph_json: str, metadata: Dict) -> str:
                 }},
             ],
             layout: {{
-                name: 'dagre',
-                rankDir: 'TB',           // Top to Bottom (сверху вниз)
-                nodeSep: 50,             // Расстояние между узлами по горизонтали
-                rankSep: 100,            // Расстояние между уровнями по вертикали
-                edgeSep: 10,
-                padding: 30,
+                name: 'preset',  // Используем ручные позиции
                 fit: true,
-                animate: false,
-                ranker: 'network-simplex',
+                padding: 50,
             }}
         }});
         
@@ -1090,17 +1234,14 @@ def generate_html_viewer(graph_json: str, metadata: Dict) -> str:
             
             switch(layoutType) {{
                 case 'tree':
+                    // Пересчитываем позиции по сетке
+                    recalculateGridPositions(cy, 15);
                     layoutConfig = {{
-                        name: 'dagre',
-                        rankDir: 'TB',           // Top to Bottom
-                        nodeSep: 50,             // Расстояние между узлами
-                        rankSep: 100,            // Расстояние между уровнями
-                        edgeSep: 10,
-                        padding: 30,
+                        name: 'preset',
                         fit: true,
+                        padding: 50,
                         animate: true,
                         animationDuration: 500,
-                        ranker: 'network-simplex',
                     }};
                     break;
                     
