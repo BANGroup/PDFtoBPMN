@@ -432,6 +432,11 @@ ocr = OCRServiceFactory.create(service_type="deepseek")
 - [x] Factory обновлён
 - [x] Все 15 тестов проходят
 - [x] **Docker образ 2B-cu128 собран и протестирован на RTX 5080** ✅
+- [x] **Docker Desktop (Windows) протестирован** ✅
+  - Docker Desktop 29.0.1 + WSL2
+  - GPU passthrough работает (RTX 5080)
+  - OCR тест: 1.95s, GPU Utilization 53%
+  - Flash Attention: отключен (не критично для 2B)
 - [ ] Тест 7B на RTX 5090 (ожидает пользователя)
 
 **Статус DeepSeek:**

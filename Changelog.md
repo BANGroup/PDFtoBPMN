@@ -29,10 +29,24 @@
 - ✅ nvidia-container-toolkit настроен
 - ✅ GPU доступен в контейнерах: RTX 5080 (sm_120)
 
+**Тестирование Docker Desktop (Windows):**
+- ✅ Docker Desktop 29.0.1 работает с WSL2
+- ✅ GPU passthrough: RTX 5080 виден в контейнерах
+- ✅ Qwen VLM сервис запускается через `docker run`
+- ✅ OCR тест: "Привет, Docker! Qwen VLM тест." распознан за 1.95s
+- ✅ GPU Utilization: 53% во время inference (подтверждение работы на GPU)
+- ✅ Flash Attention: отключен для универсальности (не влияет на GPU vs CPU)
+
 ### Исправлено
 
 - ⚠️ `CUDA error: no kernel image` с PyTorch 2.5.1+cu124 на RTX 5080
 - ✅ Решение: образ с cu128 для Blackwell GPUs
+
+### Уточнено
+
+- ℹ️ Flash Attention: False — это оптимизация скорости, НЕ переключатель GPU/CPU
+- ℹ️ Без Flash Attention модель работает на GPU, просто чуть медленнее
+- ℹ️ Для 2B модели Flash Attention не критичен (VRAM достаточно)
 
 ---
 
