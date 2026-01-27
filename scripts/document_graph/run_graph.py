@@ -56,6 +56,28 @@ def main():
         print("⚠️ Документы не найдены")
         return 1
     
+    # Ищем xlsx каталог и docx папку
+    xlsx_catalog = None
+    docx_base = None
+    
+    # Автопоиск xlsx каталога
+    xlsx_files = list(input_path.parent.glob("*.xlsx"))
+    if xlsx_files:
+        xlsx_catalog = xlsx_files[0]
+    
+    # Автопоиск docx папки
+    docx_folder = input_path.parent / "docx"
+    if docx_folder.exists():
+        docx_base = docx_folder
+    
+    # Извлекаем метаданные из всех источников
+    print("\n📖 Извлечение метаданных...")
+    extracted = builder.extract_metadata(
+        docx_base_path=docx_base,
+        xlsx_catalog_path=xlsx_catalog
+    )
+    print(f"   Обработано: {extracted} документов")
+    
     print("\n🔨 Построение графа...")
     graph = builder.build_graph()
     print(f"   Узлов: {len(graph.nodes)}")
@@ -97,6 +119,11 @@ def main():
         for i, (process, cnt) in enumerate(top_processes, 1):
             bar = "█" * (cnt // 2) + "░" * (20 - cnt // 2)
             print(f"   {i:2}. {process:<10} {bar} {cnt}")
+    
+    # Статистика по ссылкам
+    refs_edges = [e for e in graph.edges if e.edge_type == "references"]
+    if refs_edges:
+        print(f"\n🔗 Ссылки между документами: {len(refs_edges)}")
     
     print("\n" + "=" * 60)
     print("🎉 ГОТОВО!")

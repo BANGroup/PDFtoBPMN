@@ -50,8 +50,15 @@ class Document:
     doc_type: DocumentType  # Тип документа
     process_code: str       # Код процесса (М1.020)
     version: str            # Версия (06)
-    name: Optional[str] = None      # Название документа
-    file_path: Optional[str] = None # Путь к файлу
+    name: Optional[str] = None       # Название документа
+    file_path: Optional[str] = None  # Путь к файлу
+    
+    # Расширенные метаданные (из PDF)
+    title: Optional[str] = None           # Полное название из PDF
+    approval_date: Optional[str] = None   # Дата утверждения
+    effective_date: Optional[str] = None  # Дата введения в действие
+    pages: int = 0                         # Количество страниц
+    references: List[str] = field(default_factory=list)  # Ссылки на другие документы
     
     @property
     def process_group(self) -> ProcessGroup:

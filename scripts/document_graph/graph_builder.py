@@ -5,7 +5,7 @@
 
 import json
 from pathlib import Path
-from typing import List, Dict, Set
+from typing import List, Dict, Set, Optional
 from datetime import datetime
 from collections import defaultdict
 
@@ -19,6 +19,15 @@ from .parser import (
 )
 
 
+def _print_progress(current: int, total: int, filename: str):
+    """Вывод прогресса в консоль"""
+    pct = (current / total) * 100
+    bar_len = 30
+    filled = int(bar_len * current / total)
+    bar = '█' * filled + '░' * (bar_len - filled)
+    print(f"\r   [{bar}] {pct:5.1f}% ({current}/{total}) {filename[:40]:<40}", end='', flush=True)
+
+
 class DocumentGraphBuilder:
     """Строитель графа документов"""
     
@@ -27,6 +36,7 @@ class DocumentGraphBuilder:
         self.documents: List[Document] = []
         self.processes: Set[str] = set()
         self.process_groups: Set[ProcessGroup] = set()
+        self.metadata_cache: Dict[str, dict] = {}
     
     def scan_folder(self, folder_path: Path) -> int:
         """
@@ -38,6 +48,108 @@ class DocumentGraphBuilder:
         docs = scan_documents_folder(folder_path)
         self.documents.extend(docs)
         return len(docs)
+    
+    def extract_metadata(self, max_pages: int = 50, 
+                         docx_base_path: Path = None,
+                         xlsx_catalog_path: Path = None) -> int:
+        """
+        Извлечь метаданные из PDF файлов с использованием всех источников
+        
+        Приоритет источников:
+        1. DOCX файл - для названия документа
+        2. XLSX каталог - для даты регистрации и процесса
+        3. PDF файл - для ссылок и fallback данных
+        
+        Args:
+            max_pages: Максимум страниц для чтения при поиске ссылок
+            docx_base_path: Путь к папке с DOCX файлами
+            xlsx_catalog_path: Путь к xlsx файлу каталога
+            
+        Returns:
+            Количество обработанных документов
+        """
+        try:
+            from .pdf_extractor import extract_document_metadata
+            from .docx_extractor import find_docx_for_pdf
+            from .xlsx_catalog import load_catalog, find_in_catalog
+        except ImportError as e:
+            print(f"⚠️ Модули недоступны: {e}")
+            return 0
+        
+        # Загружаем xlsx каталог если есть
+        catalog = {}
+        if xlsx_catalog_path and xlsx_catalog_path.exists():
+            print(f"📊 Загрузка каталога: {xlsx_catalog_path.name}")
+            catalog = load_catalog(xlsx_catalog_path)
+            print(f"   Загружено: {len(catalog)} записей")
+        
+        # Определяем базовый путь для DOCX
+        if docx_base_path is None and self.documents:
+            # Автоопределение: ищем папку docx рядом с pdf
+            first_pdf = Path(self.documents[0].file_path) if self.documents[0].file_path else None
+            if first_pdf:
+                potential_docx = first_pdf.parent.parent.parent / "docx"
+                if potential_docx.exists():
+                    docx_base_path = potential_docx
+                    print(f"📁 Найдена папка DOCX: {docx_base_path}")
+        
+        processed = 0
+        docx_found = 0
+        catalog_found = 0
+        total = len(self.documents)
+        
+        print(f"\n📖 Извлечение метаданных из {total} документов...")
+        
+        for i, doc in enumerate(self.documents):
+            if not doc.file_path:
+                continue
+            
+            pdf_path = Path(doc.file_path)
+            if not pdf_path.exists():
+                continue
+            
+            _print_progress(i + 1, total, pdf_path.name)
+            
+            try:
+                # Ищем соответствующий DOCX
+                docx_path = None
+                if docx_base_path:
+                    docx_path = find_docx_for_pdf(pdf_path, docx_base_path)
+                    if docx_path:
+                        docx_found += 1
+                
+                # Ищем в каталоге
+                catalog_entry = None
+                if catalog:
+                    catalog_entry = find_in_catalog(catalog, doc.code)
+                    if catalog_entry:
+                        catalog_found += 1
+                
+                # Извлекаем метаданные со всех источников
+                metadata = extract_document_metadata(
+                    pdf_path, 
+                    doc.code,
+                    docx_path=docx_path,
+                    catalog_entry=catalog_entry
+                )
+                
+                # Обновляем документ
+                doc.title = metadata.title
+                doc.approval_date = metadata.approval_date
+                doc.effective_date = metadata.effective_date
+                doc.pages = metadata.pages
+                doc.references = metadata.references
+                
+                processed += 1
+                
+            except Exception as e:
+                # Продолжаем при ошибках
+                pass
+        
+        print()  # Новая строка после прогресс-бара
+        print(f"   📄 DOCX найдено: {docx_found} из {total}")
+        print(f"   📊 В каталоге: {catalog_found} из {total}")
+        return processed
     
     def build_graph(self, include_root: bool = True) -> DocumentGraph:
         """
@@ -154,8 +266,12 @@ class DocumentGraphBuilder:
             DocumentType.TPM: "#607d8b",  # Серо-синий
         }
         
+        # Создаём маппинг код -> doc_id для связей
+        code_to_id = {}
+        
         for doc in self.documents:
             doc_id = f"doc_{doc.code.replace('.', '_').replace('-', '_')}"
+            code_to_id[doc.code.upper()] = doc_id
             
             self.graph.add_node(GraphNode(
                 id=doc_id,
@@ -168,6 +284,12 @@ class DocumentGraphBuilder:
                     "version": doc.version,
                     "file_path": doc.file_path,
                     "color": doc_type_colors.get(doc.doc_type, "#bdc3c7"),
+                    # Расширенные метаданные
+                    "title": doc.title or "",
+                    "approval_date": doc.approval_date or "",
+                    "effective_date": doc.effective_date or "",
+                    "pages": doc.pages,
+                    "references_count": len(doc.references) if doc.references else 0,
                 }
             ))
             
@@ -179,6 +301,29 @@ class DocumentGraphBuilder:
                     target=doc_id,
                     edge_type="contains"
                 ))
+        
+        # 6. Добавляем связи между документами (ссылки)
+        references_count = 0
+        for doc in self.documents:
+            if not doc.references:
+                continue
+            
+            source_id = code_to_id.get(doc.code.upper())
+            if not source_id:
+                continue
+            
+            for ref_code in doc.references:
+                target_id = code_to_id.get(ref_code.upper())
+                if target_id and target_id != source_id:
+                    self.graph.add_edge(GraphEdge(
+                        source=source_id,
+                        target=target_id,
+                        edge_type="references"
+                    ))
+                    references_count += 1
+        
+        if references_count > 0:
+            print(f"   🔗 Найдено связей-ссылок: {references_count}")
         
         # 6. Метаданные
         self.graph.metadata = {
@@ -435,6 +580,28 @@ def generate_html_viewer(graph_json: str, metadata: Dict) -> str:
             padding-top: 10px;
             border-top: 1px solid #333;
         }}
+        
+        /* Расширенная карточка документа */
+        .doc-card {{
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border-radius: 8px;
+            padding: 5px;
+        }}
+        
+        .doc-code {{
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #e94560;
+            margin-bottom: 5px;
+        }}
+        
+        .doc-title {{
+            font-size: 0.95em;
+            color: #0f9b8e;
+            font-style: italic;
+            margin: 5px 0;
+            line-height: 1.3;
+        }}
     </style>
 </head>
 <body>
@@ -609,6 +776,17 @@ def generate_html_viewer(graph_json: str, metadata: Dict) -> str:
                         'line-style': 'dashed',
                     }}
                 }},
+                // Связи references (ссылки между документами)
+                {{
+                    selector: 'edge[type="references"]',
+                    style: {{
+                        'line-color': '#e94560',
+                        'target-arrow-color': '#e94560',
+                        'width': 1,
+                        'line-style': 'solid',
+                        'curve-style': 'bezier',
+                    }}
+                }},
                 // Связи подсвеченные
                 {{
                     selector: 'edge.highlighted',
@@ -674,11 +852,39 @@ def generate_html_viewer(graph_json: str, metadata: Dict) -> str:
                     <p><span class="label">Группа:</span> <span class="value">${{data.group}}</span></p>
                 `;
             }} else if (data.type === 'document') {{
+                // Расширенная карточка документа
+                let titleHtml = data.title 
+                    ? `<p class="doc-title">${{data.title}}</p>` 
+                    : '';
+                
+                let datesHtml = '';
+                if (data.approval_date) {{
+                    datesHtml += `<p><span class="label">📅 Утверждён:</span> <span class="value">${{data.approval_date}}</span></p>`;
+                }}
+                if (data.effective_date) {{
+                    datesHtml += `<p><span class="label">📅 Введён:</span> <span class="value">${{data.effective_date}}</span></p>`;
+                }}
+                
+                let pagesHtml = data.pages > 0 
+                    ? `<p><span class="label">📑 Страниц:</span> <span class="value">${{data.pages}}</span></p>`
+                    : '';
+                
+                let refsHtml = data.references_count > 0
+                    ? `<p><span class="label">🔗 Ссылок:</span> <span class="value">${{data.references_count}} документов</span></p>`
+                    : '';
+                
                 html = `
-                    <p><span class="label">Тип:</span> <span class="value">${{data.doc_type}}</span></p>
-                    <p><span class="label">Код:</span> <span class="value">${{data.label}}</span></p>
-                    <p><span class="label">Процесс:</span> <span class="value">${{data.process_code || 'Не указан'}}</span></p>
-                    <p><span class="label">Версия:</span> <span class="value">${{data.version}}</span></p>
+                    <div class="doc-card">
+                        <p class="doc-code">${{data.label}}</p>
+                        ${{titleHtml}}
+                        <hr style="border-color:#333; margin:10px 0;">
+                        <p><span class="label">📂 Тип:</span> <span class="value">${{data.doc_type}}</span></p>
+                        <p><span class="label">🏭 Процесс:</span> <span class="value">${{data.process_code || 'Общий'}}</span></p>
+                        <p><span class="label">🔢 Версия:</span> <span class="value">${{data.version}}</span></p>
+                        ${{datesHtml}}
+                        ${{pagesHtml}}
+                        ${{refsHtml}}
+                    </div>
                 `;
             }}
             
