@@ -412,6 +412,8 @@ def generate_html_viewer(graph_json: str, metadata: Dict) -> str:
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Граф документов СМК</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
     <style>
         * {{
             margin: 0;
@@ -839,17 +841,15 @@ def generate_html_viewer(graph_json: str, metadata: Dict) -> str:
                 }},
             ],
             layout: {{
-                name: 'breadthfirst',
-                directed: true,
-                roots: '#root_smk',
-                padding: 50,
-                spacingFactor: 1.5,
-                avoidOverlap: true,
-                nodeDimensionsIncludeLabels: true,
+                name: 'dagre',
+                rankDir: 'TB',           // Top to Bottom (сверху вниз)
+                nodeSep: 50,             // Расстояние между узлами по горизонтали
+                rankSep: 100,            // Расстояние между уровнями по вертикали
+                edgeSep: 10,
+                padding: 30,
                 fit: true,
-                circle: false,
-                grid: false,
-                maximal: false,
+                animate: false,
+                ranker: 'network-simplex',
             }}
         }});
         
@@ -1010,14 +1010,16 @@ def generate_html_viewer(graph_json: str, metadata: Dict) -> str:
             switch(layoutType) {{
                 case 'tree':
                     layoutConfig = {{
-                        name: 'breadthfirst',
-                        directed: true,
-                        roots: '#root_smk',
-                        padding: 50,
-                        spacingFactor: 1.5,
-                        avoidOverlap: true,
-                        nodeDimensionsIncludeLabels: true,
+                        name: 'dagre',
+                        rankDir: 'TB',           // Top to Bottom
+                        nodeSep: 50,             // Расстояние между узлами
+                        rankSep: 100,            // Расстояние между уровнями
+                        edgeSep: 10,
+                        padding: 30,
                         fit: true,
+                        animate: true,
+                        animationDuration: 500,
+                        ranker: 'network-simplex',
                     }};
                     break;
                     
