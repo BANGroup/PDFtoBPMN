@@ -359,67 +359,83 @@ python3 scripts/utils/run_document.py input/document.pdf
 - [x] Все 15 тестов прошли
 - [x] Qwen VL OCR доступен
 
-#### 0.5 Docker инфраструктура для VLM ✅
+#### 0.5 Docker инфраструктура для OCR ✅
 
 **Реализовано:** Микросервисная архитектура для распределённого OCR
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Машина с 16GB (RTX 5080)                              │
-│  ├── qwen_local → Qwen2-VL-2B (~4GB)                  │
-│  └── qwen_remote → Docker на сервере (7B+)            │
+│  Локальная машина                                       │
+│  ├── qwen_local → Qwen2-VL-2B (16GB VRAM)             │
+│  ├── deepseek → DeepSeek-OCR локально (8GB VRAM)      │
+│  ├── qwen_remote → Docker Qwen (7B+)                   │
+│  └── deepseek_remote → Docker DeepSeek                 │
 └─────────────────────────────────────────────────────────┘
-                           ↓ HTTP :8001
+              ↓ HTTP :8001 (Qwen)    ↓ HTTP :8000 (DeepSeek)
 ┌─────────────────────────────────────────────────────────┐
-│  Сервер с 24GB+ (RTX 5090)                             │
-│  └── docker/qwen-vlm-service (Qwen2-VL-7B)            │
+│  Docker сервисы (любая GPU: 4080/5080/5090/H100)       │
+│  ├── qwen-vlm-service (Qwen2-VL-7B)                    │
+│  └── deepseek-ocr-service (DeepSeek-OCR 3B)           │
 └─────────────────────────────────────────────────────────┘
 ```
 
 **Компоненты:**
 
-| Файл | Описание |
-|------|----------|
-| `docker/qwen-vlm-service/app.py` | FastAPI сервис (POST /ocr, GET /health) |
-| `docker/qwen-vlm-service/Dockerfile` | CUDA образ с Qwen VLM |
-| `docker/docker-compose.yml` | Профили: default (2B), large (7B) |
-| `qwen_remote_service.py` | Клиент для подключения к Docker |
+| Сервис | Файлы | Порт |
+|--------|-------|------|
+| **Qwen VLM** | `docker/qwen-vlm-service/` | 8001 |
+| **DeepSeek-OCR** | `docker/deepseek-ocr-service/` | 8000 |
+
+**Docker профили:**
+
+| Профиль | Сервис | Модель | VRAM | Команда |
+|---------|--------|--------|------|---------|
+| default | Qwen | 2B | ~4GB | `docker compose up` |
+| large | Qwen | 7B | ~14GB | `docker compose --profile large up` |
+| deepseek | DeepSeek | 3B | ~8GB | `docker compose --profile deepseek up` |
+| deepseek-safe | DeepSeek | 3B (no flash) | ~10GB | `docker compose --profile deepseek-safe up` |
 
 **Использование:**
 
 ```bash
-# На машине с 16GB (локально)
-python3 scripts/utils/run_document.py input/doc.pdf --ocr-service qwen_local
-
-# На сервере с 24GB (Docker)
+# Qwen на сервере с 24GB
 cd docker && docker compose --profile large up -d
+curl http://localhost:8001/health
 
-# Клиент → сервер
-export QWEN_REMOTE_URL=http://server:8001
-python3 scripts/utils/run_document.py input/doc.pdf --ocr-service qwen_remote
+# DeepSeek на любой GPU (с flash_attn)
+docker compose --profile deepseek up -d
+curl http://localhost:8000/health
+
+# DeepSeek без flash_attn (гарантированно работает)
+docker compose --profile deepseek-safe up -d
 ```
 
 **Factory API:**
 
 ```python
-# Автовыбор (remote если доступен, иначе local)
+# Qwen автовыбор
 ocr = OCRServiceFactory.create(service_type="qwen")
 
-# Явно локально (2B, 16GB)
-ocr = OCRServiceFactory.create(service_type="qwen_local")
-
-# Явно через Docker (7B+, 24GB)
-ocr = OCRServiceFactory.create(service_type="qwen_remote")
+# DeepSeek (локально если доступен)
+ocr = OCRServiceFactory.create(service_type="deepseek")
 ```
 
-**Статус:**
+**Статус Qwen:**
 - [x] FastAPI сервис создан
 - [x] Dockerfile готов
 - [x] docker-compose.yml с профилями
 - [x] QwenRemoteService клиент
-- [x] Factory обновлён (qwen_local, qwen_remote, qwen)
+- [x] Factory обновлён
 - [x] Все 15 тестов проходят
 - [ ] Тест 7B на RTX 5090 (в процессе)
+
+**Статус DeepSeek:**
+- [x] FastAPI сервис создан
+- [x] Dockerfile с flash_attn (опционально)
+- [x] Профили deepseek и deepseek-safe
+- [x] Поддержка GPU: RTX 4080/4090/5080/5090/H100
+- [x] Локальный DeepSeek проверен на RTX 5080
+- [ ] Docker образ собран и протестирован
 
 #### 0.6 Обогащение IRBlock метаданными (TODO)
 

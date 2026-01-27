@@ -129,10 +129,100 @@ curl http://localhost:8001/info
 
 ```
 docker/
-├── README.md                 # Эта документация
-├── docker-compose.yml        # Оркестрация контейнеров
-└── qwen-vlm-service/
-    ├── Dockerfile           # Образ для Qwen VLM
-    ├── app.py               # FastAPI приложение
-    └── requirements.txt     # Python зависимости
+├── README.md                    # Эта документация
+├── docker-compose.yml           # Оркестрация контейнеров
+├── qwen-vlm-service/
+│   ├── Dockerfile              # Образ для Qwen VLM
+│   ├── app.py                  # FastAPI приложение
+│   └── requirements.txt        # Python зависимости
+└── deepseek-ocr-service/
+    ├── Dockerfile              # Образ для DeepSeek-OCR
+    ├── app.py                  # FastAPI приложение
+    ├── requirements.txt        # Python зависимости
+    └── README.md               # Документация DeepSeek
+```
+
+## Установка Docker (WSL2)
+
+### Вариант 1: Docker Desktop (Windows)
+
+1. Установить Docker Desktop с https://docker.com
+2. Включить "WSL 2 based engine"
+3. Включить интеграцию с WSL дистрибутивом
+4. Включить "GPU support" в Settings → Resources → GPU
+
+### Вариант 2: Docker нативно в WSL
+
+```bash
+# Установка Docker
+sudo apt-get update
+sudo apt-get install -y docker.io docker-compose-v2
+
+# Добавить пользователя в группу docker
+sudo usermod -aG docker $USER
+
+# Перелогиниться или:
+newgrp docker
+
+# Установка NVIDIA Container Toolkit
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+sudo apt-get update
+sudo apt-get install -y nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+
+# Проверка GPU в Docker
+docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi
+```
+
+## Сборка образов
+
+```bash
+cd /home/budnik_an/Obligations/docker
+
+# Только Qwen (2B)
+docker compose build qwen-vlm-2b
+
+# Только DeepSeek
+docker compose --profile deepseek build
+
+# Все образы
+docker compose --profile deepseek build
+docker compose --profile large build
+```
+
+## Troubleshooting
+
+### Docker не найден в WSL
+
+```bash
+# Проверить установку
+which docker
+
+# Если путь в /mnt/c/... - это Docker Desktop, нужно включить WSL интеграцию
+# Или установить Docker нативно в WSL (см. выше)
+```
+
+### GPU недоступен в Docker
+
+```bash
+# Проверить nvidia-container-toolkit
+docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi
+
+# Если ошибка - установить nvidia-container-toolkit
+```
+
+### Зависание при сборке
+
+```bash
+# Перед сборкой остановить GPU процессы
+pkill -f deepseek
+pkill -f qwen
+nvidia-smi  # Убедиться что VRAM свободен
+
+# Затем собирать
+docker compose --profile deepseek build
 ```

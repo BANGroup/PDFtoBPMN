@@ -73,6 +73,48 @@ python3 scripts/utils/check_environment.py
 
 ---
 
+## ⚠️ Управление ресурсами GPU (КРИТИЧЕСКИ ВАЖНО!)
+
+**ПРАВИЛО:** Перед запуском тяжелых операций (Docker build, загрузка модели) ОБЯЗАТЕЛЬНО:
+
+### 1. Проверить текущую загрузку GPU:
+```bash
+nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu --format=csv,noheader
+```
+
+### 2. Остановить ненужные процессы:
+```bash
+# Остановить DeepSeek OCR сервис
+pkill -f "uvicorn scripts.pdf_to_context.ocr_service.app"
+
+# Остановить любые процессы с GPU
+pkill -f deepseek
+pkill -f qwen
+```
+
+### 3. Очистить VRAM:
+```bash
+# Python скрипт для очистки
+python3 -c "import torch; torch.cuda.empty_cache(); print('VRAM очищен')"
+```
+
+### 4. Лимиты ресурсов:
+
+| Операция | Минимум свободной VRAM | Рекомендация |
+|----------|------------------------|--------------|
+| Docker build | 2GB | Остановить все GPU процессы |
+| DeepSeek-OCR (3B) | 8GB | Не запускать с Qwen |
+| Qwen2-VL-2B | 4GB | Можно параллельно с малыми моделями |
+| Qwen2-VL-7B | 14GB | Только отдельно |
+| Компиляция flash_attn | 4GB + CPU | Только отдельно, 10-30 мин |
+
+### 5. При зависании системы:
+- **Причина:** Обычно OOM (Out of Memory) при одновременной работе нескольких моделей
+- **Решение:** Перед тяжелыми задачами ВСЕГДА останавливать GPU-процессы
+- **Профилактика:** Проверять `nvidia-smi` перед каждой операцией
+
+---
+
 ## Особенности платформ
 
 ### Linux

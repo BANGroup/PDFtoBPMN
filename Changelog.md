@@ -40,6 +40,14 @@
 - ✅ flash_attn опционален: `USE_FLASH_ATTENTION=auto|true|false`
 - ✅ Профиль `deepseek` (с flash_attn) и `deepseek-safe` (без)
 - ✅ Проверен на RTX 5080: DeepSeek-OCR работает локально
+- ✅ Документация: `docker/deepseek-ocr-service/README.md`
+- ✅ Скрипт сборки и тестирования: `docker/build_and_test.sh`
+
+**Правила управления ресурсами GPU (`.cursorrules`):**
+- ✅ Добавлен раздел "Управление ресурсами GPU" в БЛОК 0
+- ✅ Команды проверки загрузки GPU перед тяжелыми операциями
+- ✅ Лимиты VRAM для разных операций (Docker build, модели)
+- ✅ Профилактика зависания системы при OOM
 
 **Roadmap GraphRAG (`docs/Roadmap_GraphRAG.md`):**
 - ✅ Создан план развития от текущего состояния до Graph RAG (6-9 недель)
