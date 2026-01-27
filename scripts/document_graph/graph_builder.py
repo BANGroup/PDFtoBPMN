@@ -550,6 +550,32 @@ def generate_html_viewer(graph_json: str, metadata: Dict) -> str:
         .filter-btn.V {{ background: #9b59b6; color: white; }}
         .filter-btn.all {{ background: #e94560; color: white; }}
         
+        .layout-buttons {{
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }}
+        .layout-btn {{
+            padding: 6px 12px;
+            border: 1px solid #333;
+            border-radius: 4px;
+            cursor: pointer;
+            background: #1a1a2e;
+            color: #888;
+            font-size: 12px;
+            transition: all 0.2s;
+        }}
+        .layout-btn:hover {{
+            background: #2a2a4e;
+            color: #fff;
+        }}
+        .layout-btn.active {{
+            background: #0f9b8e;
+            color: white;
+            border-color: #0f9b8e;
+        }}
+        
         .legend {{
             margin-top: 15px;
         }}
@@ -618,6 +644,13 @@ def generate_html_viewer(graph_json: str, metadata: Dict) -> str:
                     <button class="filter-btn M" onclick="filterByGroup('M')">М (Менеджмент)</button>
                     <button class="filter-btn B" onclick="filterByGroup('B')">Б (Жизн. цикл)</button>
                     <button class="filter-btn V" onclick="filterByGroup('V')">В (Обеспечение)</button>
+                </div>
+                
+                <h3 style="margin-top:15px; color:#0f9b8e;">📐 Вид графа:</h3>
+                <div class="layout-buttons">
+                    <button class="layout-btn active" data-layout="tree" onclick="changeLayout('tree')">🌳 Дерево</button>
+                    <button class="layout-btn" data-layout="galaxy" onclick="changeLayout('galaxy')">🌌 Галактика</button>
+                    <button class="layout-btn" data-layout="circle" onclick="changeLayout('circle')">⭕ Круг</button>
                 </div>
             </div>
             
@@ -806,22 +839,17 @@ def generate_html_viewer(graph_json: str, metadata: Dict) -> str:
                 }},
             ],
             layout: {{
-                name: 'cose',
-                idealEdgeLength: 100,
-                nodeOverlap: 20,
-                refresh: 20,
+                name: 'breadthfirst',
+                directed: true,
+                roots: '#root_smk',
+                padding: 50,
+                spacingFactor: 1.5,
+                avoidOverlap: true,
+                nodeDimensionsIncludeLabels: true,
                 fit: true,
-                padding: 30,
-                randomize: false,
-                componentSpacing: 100,
-                nodeRepulsion: 400000,
-                edgeElasticity: 100,
-                nestingFactor: 5,
-                gravity: 80,
-                numIter: 1000,
-                initialTemp: 200,
-                coolingFactor: 0.95,
-                minTemp: 1.0
+                circle: false,
+                grid: false,
+                maximal: false,
             }}
         }});
         
@@ -969,6 +997,79 @@ def generate_html_viewer(graph_json: str, metadata: Dict) -> str:
             const visibleElements = nodes.add(connectedEdges);
             
             cy.elements().not(visibleElements).addClass('dimmed');
+        }}
+        
+        // Переключение layout графа
+        function changeLayout(layoutType) {{
+            // Обновляем кнопки
+            document.querySelectorAll('.layout-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`.layout-btn[data-layout="${{layoutType}}"]`).classList.add('active');
+            
+            let layoutConfig;
+            
+            switch(layoutType) {{
+                case 'tree':
+                    layoutConfig = {{
+                        name: 'breadthfirst',
+                        directed: true,
+                        roots: '#root_smk',
+                        padding: 50,
+                        spacingFactor: 1.5,
+                        avoidOverlap: true,
+                        nodeDimensionsIncludeLabels: true,
+                        fit: true,
+                    }};
+                    break;
+                    
+                case 'galaxy':
+                    layoutConfig = {{
+                        name: 'cose',
+                        idealEdgeLength: 100,
+                        nodeOverlap: 20,
+                        refresh: 20,
+                        fit: true,
+                        padding: 30,
+                        randomize: false,
+                        componentSpacing: 100,
+                        nodeRepulsion: 400000,
+                        edgeElasticity: 100,
+                        nestingFactor: 5,
+                        gravity: 80,
+                        numIter: 1000,
+                        initialTemp: 200,
+                        coolingFactor: 0.95,
+                        minTemp: 1.0
+                    }};
+                    break;
+                    
+                case 'circle':
+                    layoutConfig = {{
+                        name: 'concentric',
+                        fit: true,
+                        padding: 30,
+                        startAngle: 3/2 * Math.PI,
+                        sweep: undefined,
+                        clockwise: true,
+                        equidistant: false,
+                        minNodeSpacing: 50,
+                        avoidOverlap: true,
+                        nodeDimensionsIncludeLabels: true,
+                        concentric: function(node) {{
+                            // СМК в центре, группы ближе, документы дальше
+                            const type = node.data('type');
+                            if (type === 'root') return 100;
+                            if (type === 'process_group') return 80;
+                            if (type === 'process') return 60;
+                            return 10;
+                        }},
+                        levelWidth: function(nodes) {{
+                            return 2;
+                        }}
+                    }};
+                    break;
+            }}
+            
+            cy.layout(layoutConfig).run();
         }}
     </script>
 </body>
