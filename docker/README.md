@@ -157,21 +157,30 @@ curl http://localhost:8001/info
 - Docker с nvidia-container-toolkit
 - CUDA 12.4+
 
-### HuggingFace Token (ускоренная загрузка моделей)
+### Настройка секретов (.env)
 
 ```bash
-# Настройка токена (получить на huggingface.co/settings/tokens)
-export HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxx
+# 1. Скопировать пример конфигурации
+cp .env.example .env
 
-# Или через huggingface-cli
-pip install huggingface_hub
-huggingface-cli login
+# 2. Отредактировать .env - добавить HF_TOKEN
+# HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxx  # Получить: huggingface.co/settings/tokens
 
-# Для Docker - передать через переменную:
-docker compose up -d  # автоматически использует HF_TOKEN
+# 3. Запустить Docker (автоматически читает .env)
+cd docker
+docker compose up -d
 ```
 
-**⚠️ Не добавляйте токен в git!** Храните в `~/.huggingface_token` или переменной окружения.
+**Структура:**
+```
+project/
+├── .env.example    # ✅ В git (шаблон без секретов)
+├── .env            # ❌ НЕ в git (реальные секреты)
+└── docker/
+    └── docker-compose.yml  # Читает ../.env через env_file
+```
+
+**⚠️ .env добавлен в .gitignore — токены никогда не попадут в репозиторий!**
 
 ### Для клиента
 - Python 3.10+

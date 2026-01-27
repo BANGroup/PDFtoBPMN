@@ -80,3 +80,14 @@ output2
 docker/**/models/
 docker/**/.cache/
 *.tar
+
+# Secrets and Environment
+.env
+.env.local
+.env.*.local
+*.secret
+*.secrets
+.secrets/
+*_token
+*_TOKEN
+.huggingface_token
