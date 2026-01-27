@@ -29,6 +29,7 @@ services:
       - QWEN_MODEL=Qwen/Qwen2-VL-2B-Instruct
       - MAX_NEW_TOKENS=2048
       - USE_FLASH_ATTENTION=false
+      - HF_TOKEN=${HF_TOKEN:-}  # Ускоренная загрузка моделей
     volumes:
       - qwen-models:/app/models
     deploy:
@@ -63,6 +64,7 @@ services:
       - QWEN_MODEL=Qwen/Qwen2-VL-7B-Instruct
       - MAX_NEW_TOKENS=2048
       - USE_FLASH_ATTENTION=false
+      - HF_TOKEN=${HF_TOKEN:-}  # Ускоренная загрузка моделей
     volumes:
       - qwen-models:/app/models
     deploy:
@@ -97,6 +99,7 @@ services:
       - DEEPSEEK_MODEL=deepseek-ai/DeepSeek-OCR
       - USE_FLASH_ATTENTION=auto  # auto, true, false
       - MAX_NEW_TOKENS=4096
+      - HF_TOKEN=${HF_TOKEN:-}  # Ускоренная загрузка моделей
     volumes:
       - deepseek-models:/app/models
     deploy:
@@ -131,6 +134,7 @@ services:
       - DEEPSEEK_MODEL=deepseek-ai/DeepSeek-OCR
       - USE_FLASH_ATTENTION=false  # Гарантированно работает
       - MAX_NEW_TOKENS=4096
+      - HF_TOKEN=${HF_TOKEN:-}  # Ускоренная загрузка моделей
     volumes:
       - deepseek-models:/app/models
     deploy:

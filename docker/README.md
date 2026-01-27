@@ -157,6 +157,22 @@ curl http://localhost:8001/info
 - Docker с nvidia-container-toolkit
 - CUDA 12.4+
 
+### HuggingFace Token (ускоренная загрузка моделей)
+
+```bash
+# Настройка токена (получить на huggingface.co/settings/tokens)
+export HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxx
+
+# Или через huggingface-cli
+pip install huggingface_hub
+huggingface-cli login
+
+# Для Docker - передать через переменную:
+docker compose up -d  # автоматически использует HF_TOKEN
+```
+
+**⚠️ Не добавляйте токен в git!** Храните в `~/.huggingface_token` или переменной окружения.
+
 ### Для клиента
 - Python 3.10+
 - requests
