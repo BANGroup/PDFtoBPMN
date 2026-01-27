@@ -176,7 +176,14 @@ async def ocr_figure(
                     prompt = custom_prompt
                     logger.info(f"   Используется custom_prompt")
                 else:
-                    from .prompts import OCRPrompts
+                    # Абсолютный импорт для работы при прямом запуске
+                    try:
+                        from .prompts import OCRPrompts
+                    except ImportError:
+                        import sys
+                        from pathlib import Path
+                        sys.path.insert(0, str(Path(__file__).parent))
+                        from prompts import OCRPrompts
                     prompt = OCRPrompts.get_prompt_by_type(prompt_type)
                     logger.info(f"   Используется prompt_type: {prompt_type}")
                 
