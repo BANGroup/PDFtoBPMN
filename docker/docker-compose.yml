@@ -1,23 +1,34 @@
-# Docker Compose для VLM OCR сервисов
+# Docker Compose для Qwen VLM OCR сервиса
 #
-# GPU совместимость:
-#   - RTX 4080/4090 (Ada): qwen-vlm-service:2b, :7b (PyTorch 2.5+cu124)
-#   - RTX 5070/5080/5090 (Blackwell): qwen-vlm-service:2b-cu128, :7b-cu128 (PyTorch 2.10+cu128)
+# ═══════════════════════════════════════════════════════════════════
+# АРХИТЕКТУРА OCR СЕРВИСОВ (финальная версия 27.01.2026)
+# ═══════════════════════════════════════════════════════════════════
+#
+# 1. Qwen2-VL-2B (Docker) - УНИВЕРСАЛЬНЫЙ
+#    - Работает без flash_attn через SDPA
+#    - Подходит для любых GPU с 8GB+ VRAM
+#    - Профили: default (Ada), blackwell (RTX 5070/5080/5090)
+#
+# 2. Qwen2-VL-7B (ЛОКАЛЬНО) - только для машин с 24GB+ VRAM
+#    - Требует RTX 5090 / A6000 / H100
+#    - Рекомендуется локальная установка
+#
+# 3. DeepSeek-OCR (ЛОКАЛЬНО) - только с flash_attn
+#    - Требует предкомпилированный flash_attn под конкретную GPU
+#    - Не подходит для Docker из-за CUDA OOM без flash_attn
+#    - Дает bbox координаты (Qwen не дает)
+#
+# GPU совместимость Docker образов:
+#   - RTX 4080/4090 (Ada sm_89): qwen-vlm-service:2b (PyTorch 2.5+cu124)
+#   - RTX 5070/5080/5090 (Blackwell sm_120): qwen-vlm-service:2b-cu128 (PyTorch 2.10+cu128)
 #
 # Профили:
-#   - default: Qwen2-VL-2B (для 16GB VRAM)
-#   - large: Qwen2-VL-7B (для 24GB+ VRAM)
-#   - blackwell: Qwen2-VL-2B с PyTorch cu128 (RTX 5070/5080/5090)
-#   - blackwell-large: Qwen2-VL-7B с PyTorch cu128
-#   - deepseek: DeepSeek-OCR (8GB+ VRAM)
-#   - deepseek-safe: DeepSeek без flash_attn
+#   - default: Qwen2-VL-2B для Ada GPUs (RTX 4080/4090)
+#   - blackwell: Qwen2-VL-2B для Blackwell GPUs (RTX 5070/5080/5090)
 #
 # Использование:
 #   docker compose up                         # 2B модель (Ada GPUs)
 #   docker compose --profile blackwell up     # 2B модель (Blackwell GPUs)
-#   docker compose --profile large up         # 7B модель (Ada GPUs)
-#   docker compose --profile blackwell-large up # 7B модель (Blackwell GPUs)
-#   docker compose --profile deepseek up      # DeepSeek-OCR
 #
 # Конфигурация:
 #   1. Скопировать ../.env.example в ../.env
@@ -94,151 +105,25 @@ services:
       retries: 3
       start_period: 120s
 
-  # ============================================================
-  # Qwen VLM Service (7B - для Ada GPUs: RTX 4080/4090 с 24GB+ VRAM)
-  # ============================================================
-  qwen-vlm-7b:
-    build:
-      context: ./qwen-vlm-service
-      dockerfile: Dockerfile
-    image: qwen-vlm-service:7b
-    container_name: qwen-vlm-7b
-    env_file:
-      - ../.env
-    profiles:
-      - large
-    ports:
-      - "8001:8000"
-    environment:
-      - QWEN_MODEL=Qwen/Qwen2-VL-7B-Instruct
-      - MAX_NEW_TOKENS=2048
-      - USE_FLASH_ATTENTION=false
-    volumes:
-      - qwen-models:/app/models
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 180s
-
-  # ============================================================
-  # Qwen VLM Service (7B - для Blackwell GPUs: RTX 5090 с 24GB+ VRAM)
-  # ============================================================
-  qwen-vlm-7b-blackwell:
-    image: qwen-vlm-service:7b-cu128
-    container_name: qwen-vlm-7b-blackwell
-    env_file:
-      - ../.env
-    profiles:
-      - blackwell-large
-    ports:
-      - "8001:8000"
-    environment:
-      - QWEN_MODEL=Qwen/Qwen2-VL-7B-Instruct
-      - MAX_NEW_TOKENS=2048
-      - USE_FLASH_ATTENTION=false
-    volumes:
-      - qwen-models:/app/models
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 180s
-
-  # ============================================================
-  # DeepSeek-OCR Service (универсальный для любых GPU)
-  # ============================================================
-  deepseek-ocr:
-    build:
-      context: ./deepseek-ocr-service
-      dockerfile: Dockerfile
-    image: deepseek-ocr-service:latest
-    container_name: deepseek-ocr
-    env_file:
-      - ../.env  # Секреты из корня проекта
-    profiles:
-      - deepseek
-    ports:
-      - "8000:8000"
-    environment:
-      - DEEPSEEK_MODEL=deepseek-ai/DeepSeek-OCR
-      - USE_FLASH_ATTENTION=auto  # auto, true, false
-      - MAX_NEW_TOKENS=4096
-    volumes:
-      - deepseek-models:/app/models
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 180s
-
-  # ============================================================
-  # DeepSeek-OCR (без flash_attn - гарантированно работает)
-  # ============================================================
-  deepseek-ocr-safe:
-    build:
-      context: ./deepseek-ocr-service
-      dockerfile: Dockerfile
-    image: deepseek-ocr-service:safe
-    container_name: deepseek-ocr-safe
-    env_file:
-      - ../.env  # Секреты из корня проекта
-    profiles:
-      - deepseek-safe
-    ports:
-      - "8000:8000"
-    environment:
-      - DEEPSEEK_MODEL=deepseek-ai/DeepSeek-OCR
-      - USE_FLASH_ATTENTION=false  # Гарантированно работает
-      - MAX_NEW_TOKENS=4096
-    volumes:
-      - deepseek-models:/app/models
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 180s
+  # ═══════════════════════════════════════════════════════════════
+  # DEPRECATED: Qwen 7B и DeepSeek рекомендуется использовать локально
+  # ═══════════════════════════════════════════════════════════════
+  #
+  # Qwen 7B:
+  #   - Требует 24GB+ VRAM (RTX 5090, A6000)
+  #   - Локальная установка: pip install transformers accelerate qwen-vl-utils
+  #   - Запуск: python scripts/pdf_to_context/ocr_service/qwen_local_service.py
+  #
+  # DeepSeek-OCR:
+  #   - Требует flash_attn под конкретную GPU
+  #   - Без flash_attn → CUDA OOM даже на 16GB
+  #   - Локальная установка в DeepSeek-OCR/venv/
+  #   - Запуск: cd DeepSeek-OCR && source venv/bin/activate && python ocr_server_api.py
+  #
+  # Эти сервисы закомментированы, но сохранены для справки.
+  # ═══════════════════════════════════════════════════════════════
 
 volumes:
   qwen-models:
     name: qwen-vlm-models
-    driver: local
-  deepseek-models:
-    name: deepseek-ocr-models
     driver: local

@@ -1,8 +1,10 @@
 # DeepSeek-OCR Service Dependencies
 # ВАЖНО: torch устанавливается отдельно в Dockerfile (cu128 для Blackwell)
+# ВАЖНО: transformers 4.46.x — DeepSeek-OCR несовместим с 5.x!
 
 # Core ML (без torch)
-transformers>=4.45.0
+# КРИТИЧНО: transformers==4.46.3 — единственная версия с LlamaFlashAttention2!
+transformers==4.46.3
 accelerate>=0.34.0
 safetensors>=0.4.0
 
@@ -14,6 +16,14 @@ python-multipart>=0.0.12
 
 # Image processing
 Pillow>=10.4.0
+
+# DeepSeek-OCR dependencies (trust_remote_code)
+addict>=2.4.0
+matplotlib>=3.8.0
+requests>=2.31.0
+einops>=0.8.0
+easydict>=1.10
+timm>=0.9.0
 
 # Optional: Flash Attention (требует компиляции под GPU)
 # flash-attn>=2.6.0  # Раскомментировать для ускорения

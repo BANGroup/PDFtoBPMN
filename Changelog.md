@@ -6,6 +6,33 @@
 
 ---
 
+## [27-01-2026] - Финальная архитектура OCR сервисов
+
+### Архитектура OCR (итоговое решение)
+
+**Docker (универсальный):**
+- ✅ Qwen2-VL-2B — универсальный сервис для любых GPU с 8GB+ VRAM
+- ✅ Работает без flash_attn (через SDPA)
+- ✅ Профили: `default` (Ada), `blackwell` (RTX 5070/5080/5090)
+
+**Локальные сервисы:**
+- ✅ DeepSeek-OCR — только локально с flash_attn
+- ✅ Qwen2-VL-7B — только локально (24GB+ VRAM)
+
+**Причины:**
+- DeepSeek без flash_attn → CUDA OOM даже на 16GB VRAM
+- Qwen 7B требует 24GB+ VRAM → не для Docker на стандартных машинах
+- Qwen 2B работает через SDPA без flash_attn → универсальный
+
+### Изменено
+
+- ⚠️ Удалены профили `deepseek`, `deepseek-safe` из docker-compose.yml
+- ⚠️ Удалены профили `large`, `blackwell-large` из docker-compose.yml
+- ✅ Обновлена документация `docker/README.md` с финальной архитектурой
+- ✅ docker-compose.yml содержит только Qwen 2B профили
+
+---
+
 ## [27-01-2026] - Docker с поддержкой Blackwell GPU (RTX 5070/5080/5090)
 
 ### Добавлено
@@ -69,6 +96,14 @@
 - ✅ app.py переписан с model.infer() API
 - ✅ Dockerfile на nvidia/cuda:12.8.1 + cu128
 - ✅ Flash Attention отключен в Docker (для универсальности)
+
+**Docker образ DeepSeek собран и протестирован:**
+- ✅ `deepseek-ocr-service:cu128` — 18.1GB
+- ✅ transformers==4.46.3 (критично! 5.x несовместим)
+- ✅ OCR тест: "Привет, Docker! Qwen VLM тест." за 1.86s
+- ✅ Flash Attention: отключен, работает на GPU
+- ✅ Русский текст: точный (лучше чем с flash_attn!)
+- ⚠️ Требует PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 ---
 

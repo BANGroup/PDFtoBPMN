@@ -384,50 +384,67 @@ python3 scripts/utils/run_document.py input/document.pdf
 | Сервис | Файлы | Порт |
 |--------|-------|------|
 | **Qwen VLM** | `docker/qwen-vlm-service/` | 8001 |
-| **DeepSeek-OCR** | `docker/deepseek-ocr-service/` | 8000 |
 
-**Docker профили:**
+### Финальная архитектура OCR (27.01.2026)
 
-| Профиль | Сервис | Модель | VRAM | GPU | Команда |
-|---------|--------|--------|------|-----|---------|
-| default | Qwen | 2B | ~5GB | Ada | `docker compose up` |
-| **blackwell** | Qwen | 2B | ~5GB | **Blackwell** | `docker compose --profile blackwell up` |
-| large | Qwen | 7B | ~14GB | Ada | `docker compose --profile large up` |
-| **blackwell-large** | Qwen | 7B | ~14GB | **Blackwell** | `docker compose --profile blackwell-large up` |
-| deepseek | DeepSeek | 3B | ~8GB | Any | `docker compose --profile deepseek up` |
-| deepseek-safe | DeepSeek | 3B | ~10GB | Any | `docker compose --profile deepseek-safe up` |
-
-**⚠️ Для RTX 5070/5080/5090 (Blackwell sm_120) использовать профили `blackwell`!**
-
-**Использование:**
-
-```bash
-# Qwen на сервере с 24GB
-cd docker && docker compose --profile large up -d
-curl http://localhost:8001/health
-
-# DeepSeek на любой GPU (с flash_attn)
-docker compose --profile deepseek up -d
-curl http://localhost:8000/health
-
-# DeepSeek без flash_attn (гарантированно работает)
-docker compose --profile deepseek-safe up -d
 ```
+┌────────────────────────────────────────────────────────────────┐
+│  DOCKER (универсальный)                                        │
+│  └── Qwen2-VL-2B → порт 8001                                  │
+│      • default: Ada GPU (RTX 4080/4090)                        │
+│      • blackwell: Blackwell GPU (RTX 5070/5080/5090)          │
+└────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────┐
+│  ЛОКАЛЬНЫЕ СЕРВИСЫ (специфические задачи)                      │
+│  ├── DeepSeek-OCR → порт 8000                                  │
+│  │   • Требует flash_attn (компиляция под GPU)                │
+│  │   • Дает bbox координаты                                   │
+│  └── Qwen2-VL-7B → локально                                   │
+│      • Требует 24GB+ VRAM                                     │
+│      • Лучшее качество                                        │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Docker профили (только Qwen 2B):**
+
+| Профиль | VRAM | GPU | Команда |
+|---------|------|-----|---------|
+| **default** | ~5GB | Ada (RTX 4080/4090) | `docker compose up` |
+| **blackwell** | ~5GB | Blackwell (RTX 5070/5080/5090) | `docker compose --profile blackwell up` |
+
+**⚠️ DeepSeek и Qwen 7B — только локально!**
+
+**Причины:**
+- DeepSeek без flash_attn → CUDA OOM даже на 16GB
+- Qwen 7B → требует 24GB+ VRAM
+- Qwen 2B работает через SDPA без flash_attn → универсальный
+
+**Сравнение OCR сервисов:**
+
+| Параметр | Qwen 2B (Docker) | Qwen 7B (Local) | DeepSeek (Local) |
+|----------|------------------|-----------------|------------------|
+| VRAM | ~5GB | ~14GB | ~8GB |
+| Flash Attention | Не нужен | Не нужен | **Обязателен** |
+| Bbox координаты | ❌ | ❌ | ✅ |
+| Кириллица | ✅ | ✅ | ⚠️ транслит |
+| Docker | ✅ | ❌ | ❌ |
+| Скорость | 1.95s | — | 1.29s |
 
 **Factory API:**
 
 ```python
-# Qwen автовыбор
+# Qwen (Docker или локальный)
 ocr = OCRServiceFactory.create(service_type="qwen")
 
-# DeepSeek (локально если доступен)
+# DeepSeek (только локальный)
 ocr = OCRServiceFactory.create(service_type="deepseek")
 ```
 
 **Статус Qwen:**
 - [x] FastAPI сервис создан
 - [x] Dockerfile готов
-- [x] docker-compose.yml с профилями
+- [x] docker-compose.yml с профилями (default, blackwell)
 - [x] QwenRemoteService клиент
 - [x] Factory обновлён
 - [x] Все 15 тестов проходят
@@ -437,27 +454,22 @@ ocr = OCRServiceFactory.create(service_type="deepseek")
   - GPU passthrough работает (RTX 5080)
   - OCR тест: 1.95s, GPU Utilization 53%
   - Flash Attention: отключен (не критично для 2B)
-- [ ] Тест 7B на RTX 5090 (ожидает пользователя)
+- [ ] Тест 7B локально на RTX 5090 (опционально)
 
 **Статус DeepSeek:**
-- [x] FastAPI сервис создан
-- [x] Dockerfile с flash_attn (опционально)
-- [x] Профили deepseek и deepseek-safe
-- [x] Поддержка GPU: RTX 4080/4090/5080/5090/H100
-- [x] **Локальный DeepSeek протестирован на RTX 5080** ✅
+- [x] **Локальный DeepSeek — рекомендуемое решение** ✅
   - flash_attn 2.7.3 + torch 2.9.0+cu128
   - OCR: 1.29s (быстрее Qwen)
   - BBox координаты: ✅
   - Кириллица: ⚠️ транслитерация
-- [x] **app.py обновлён с model.infer() API** ✅
-- [x] **Dockerfile обновлён на cu128** ✅
-- [ ] Docker образ собрать и протестировать (TODO)
+- [x] Docker профили удалены (flash_attn несовместим с Docker)
+- [x] Документация обновлена
 
 **Рекомендации по GPU:**
 
-| GPU | VRAM | Модели | Примечание |
-|-----|------|--------|------------|
-| RTX 5070 | 8GB | Qwen2-VL-2B | Минимум, без DeepSeek |
+| GPU | VRAM | Docker | Локально |
+|-----|------|--------|----------|
+| RTX 5070 | 8GB | Qwen 2B (`blackwell`) | — |
 | RTX 4080/5080 | 16GB | Qwen 2B + DeepSeek | Стандарт |
 | RTX 4090/5090 | 24GB | Qwen 7B + DeepSeek | Полная конфигурация |
 | H100/A100 | 40-80GB | Все модели | Enterprise |
