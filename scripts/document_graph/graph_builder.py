@@ -254,7 +254,7 @@ class DocumentGraphBuilder:
                     edge_type="hierarchy"
                 ))
         
-        # 5. Добавляем узлы документов
+        # 5. Добавляем промежуточный уровень - типы документов для каждого процесса
         doc_type_colors = {
             DocumentType.DP: "#f39c12",   # Оранжевый
             DocumentType.RD: "#e74c3c",   # Красный
@@ -266,6 +266,49 @@ class DocumentGraphBuilder:
             DocumentType.TPM: "#607d8b",  # Серо-синий
         }
         
+        doc_type_labels = {
+            DocumentType.DP: "ДП",
+            DocumentType.RD: "РД",
+            DocumentType.ST: "СТ",
+            DocumentType.KD: "КД",
+            DocumentType.RG: "РГ",
+            DocumentType.RK: "РК",
+            DocumentType.IOT: "ИОТ",
+            DocumentType.TPM: "TPM",
+        }
+        
+        # Собираем пары (процесс, тип) для создания промежуточных узлов
+        process_doctypes = set()
+        for doc in self.documents:
+            if doc.process_id:
+                normalized = normalize_process_code(doc.process_id)
+                process_doctypes.add((normalized, doc.doc_type))
+        
+        # Создаём узлы типов документов для каждого процесса
+        for process_code, doc_type in process_doctypes:
+            type_node_id = f"type_{process_code}_{doc_type.name}"
+            type_label = doc_type_labels.get(doc_type, doc_type.name)
+            
+            self.graph.add_node(GraphNode(
+                id=type_node_id,
+                label=type_label,
+                node_type="doc_type",
+                data={
+                    "process_code": process_code,
+                    "doc_type": doc_type.value,
+                    "doc_type_code": doc_type.name,
+                    "color": doc_type_colors.get(doc_type, "#bdc3c7"),
+                }
+            ))
+            
+            # Связь типа с процессом
+            self.graph.add_edge(GraphEdge(
+                source=f"process_{process_code}",
+                target=type_node_id,
+                edge_type="hierarchy"
+            ))
+        
+        # 6. Добавляем узлы документов
         # Создаём маппинг код -> doc_id для связей
         code_to_id = {}
         
@@ -293,11 +336,12 @@ class DocumentGraphBuilder:
                 }
             ))
             
-            # Связь документа с процессом
+            # Связь документа с типом документа (промежуточный уровень)
             if doc.process_id:
                 normalized = normalize_process_code(doc.process_id)
+                type_node_id = f"type_{normalized}_{doc.doc_type.name}"
                 self.graph.add_edge(GraphEdge(
-                    source=f"process_{normalized}",
+                    source=type_node_id,
                     target=doc_id,
                     edge_type="contains"
                 ))
@@ -746,6 +790,18 @@ def generate_html_viewer(graph_json: str, metadata: Dict) -> str:
                         'text-max-width': '120px',
                     }}
                 }},
+                // Типы документов (промежуточный уровень)
+                {{
+                    selector: 'node[type="doc_type"]',
+                    style: {{
+                        'width': 30,
+                        'height': 30,
+                        'font-size': '8px',
+                        'font-weight': 'bold',
+                        'shape': 'diamond',
+                        'text-max-width': '50px',
+                    }}
+                }},
                 // Документы
                 {{
                     selector: 'node[type="document"]',
@@ -858,6 +914,17 @@ def generate_html_viewer(graph_json: str, metadata: Dict) -> str:
             const data = node.data();
             const panel = document.getElementById('info-panel');
             
+            // Подсчёт входящих и исходящих связей
+            const incomingEdges = node.incomers('edge').length;
+            const outgoingEdges = node.outgoers('edge').length;
+            
+            // HTML для связей (общий для всех типов)
+            const connectionsHtml = `
+                <hr style="border-color:#333; margin:10px 0;">
+                <p><span class="label">⬅️ Входящих:</span> <span class="value">${{incomingEdges}}</span></p>
+                <p><span class="label">➡️ Исходящих:</span> <span class="value">${{outgoingEdges}}</span></p>
+            `;
+            
             let html = '';
             
             if (data.type === 'root') {{
@@ -865,12 +932,14 @@ def generate_html_viewer(graph_json: str, metadata: Dict) -> str:
                     <p><span class="label">Тип:</span> <span class="value">Корневой элемент</span></p>
                     <p><span class="label">Описание:</span> <span class="value">${{data.description || 'Система менеджмента качества'}}</span></p>
                     <p><span class="label">Стандарт:</span> <span class="value">${{data.standard || 'ISO 9001:2015'}}</span></p>
+                    ${{connectionsHtml}}
                 `;
             }} else if (data.type === 'process_group') {{
                 html = `
                     <p><span class="label">Тип:</span> <span class="value">Группа процессов</span></p>
                     <p><span class="label">Название:</span> <span class="value">${{data.label}}</span></p>
                     <p><span class="label">Код:</span> <span class="value">${{data.group_code}}</span></p>
+                    ${{connectionsHtml}}
                 `;
             }} else if (data.type === 'process') {{
                 html = `
@@ -878,6 +947,15 @@ def generate_html_viewer(graph_json: str, metadata: Dict) -> str:
                     <p><span class="label">Название:</span> <span class="value">${{data.label}}</span></p>
                     <p><span class="label">Код:</span> <span class="value">${{data.process_code}}</span></p>
                     <p><span class="label">Группа:</span> <span class="value">${{data.group}}</span></p>
+                    ${{connectionsHtml}}
+                `;
+            }} else if (data.type === 'doc_type') {{
+                // Тип документа (промежуточный уровень)
+                html = `
+                    <p><span class="label">Тип:</span> <span class="value">Категория документов</span></p>
+                    <p><span class="label">Категория:</span> <span class="value">${{data.doc_type}}</span></p>
+                    <p><span class="label">Процесс:</span> <span class="value">${{data.process_code}}</span></p>
+                    ${{connectionsHtml}}
                 `;
             }} else if (data.type === 'document') {{
                 // Расширенная карточка документа
@@ -898,7 +976,7 @@ def generate_html_viewer(graph_json: str, metadata: Dict) -> str:
                     : '';
                 
                 let refsHtml = data.references_count > 0
-                    ? `<p><span class="label">🔗 Ссылок:</span> <span class="value">${{data.references_count}} документов</span></p>`
+                    ? `<p><span class="label">🔗 Ссылок в тексте:</span> <span class="value">${{data.references_count}}</span></p>`
                     : '';
                 
                 html = `
@@ -912,6 +990,9 @@ def generate_html_viewer(graph_json: str, metadata: Dict) -> str:
                         ${{datesHtml}}
                         ${{pagesHtml}}
                         ${{refsHtml}}
+                        <hr style="border-color:#333; margin:10px 0;">
+                        <p><span class="label">⬅️ Входящих:</span> <span class="value">${{incomingEdges}}</span></p>
+                        <p><span class="label">➡️ Исходящих:</span> <span class="value">${{outgoingEdges}}</span></p>
                     </div>
                 `;
             }}
