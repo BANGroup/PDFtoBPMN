@@ -1,29 +1,34 @@
 # Docker Compose для VLM OCR сервисов
 #
+# GPU совместимость:
+#   - RTX 4080/4090 (Ada): qwen-vlm-service:2b, :7b (PyTorch 2.5+cu124)
+#   - RTX 5070/5080/5090 (Blackwell): qwen-vlm-service:2b-cu128, :7b-cu128 (PyTorch 2.10+cu128)
+#
 # Профили:
 #   - default: Qwen2-VL-2B (для 16GB VRAM)
 #   - large: Qwen2-VL-7B (для 24GB+ VRAM)
+#   - blackwell: Qwen2-VL-2B с PyTorch cu128 (RTX 5070/5080/5090)
+#   - blackwell-large: Qwen2-VL-7B с PyTorch cu128
 #   - deepseek: DeepSeek-OCR (8GB+ VRAM)
 #   - deepseek-safe: DeepSeek без flash_attn
 #
 # Использование:
-#   docker compose up                    # 2B модель (default)
-#   docker compose --profile large up    # 7B модель
-#   docker compose --profile deepseek up # DeepSeek-OCR
+#   docker compose up                         # 2B модель (Ada GPUs)
+#   docker compose --profile blackwell up     # 2B модель (Blackwell GPUs)
+#   docker compose --profile large up         # 7B модель (Ada GPUs)
+#   docker compose --profile blackwell-large up # 7B модель (Blackwell GPUs)
+#   docker compose --profile deepseek up      # DeepSeek-OCR
 #
 # Конфигурация:
 #   1. Скопировать ../.env.example в ../.env
 #   2. Заполнить HF_TOKEN и другие переменные
 #   3. docker compose автоматически прочитает ../.env
-#
-# Или с явным выбором модели:
-#   QWEN_MODEL=Qwen/Qwen2-VL-7B-Instruct docker compose up
 
 version: "3.8"
 
 services:
   # ============================================================
-  # Qwen VLM Service (2B - default для 16GB)
+  # Qwen VLM Service (2B - для Ada GPUs: RTX 4080/4090)
   # ============================================================
   qwen-vlm-2b:
     build:
@@ -34,7 +39,7 @@ services:
     env_file:
       - ../.env  # Секреты из корня проекта
     ports:
-      - "8001:8001"
+      - "8001:8000"
     environment:
       - QWEN_MODEL=Qwen/Qwen2-VL-2B-Instruct
       - MAX_NEW_TOKENS=2048
@@ -50,14 +55,47 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 120s
 
   # ============================================================
-  # Qwen VLM Service (7B - для 24GB+ VRAM)
+  # Qwen VLM Service (2B - для Blackwell GPUs: RTX 5070/5080/5090)
+  # ============================================================
+  qwen-vlm-2b-blackwell:
+    image: qwen-vlm-service:2b-cu128
+    container_name: qwen-vlm-2b-blackwell
+    env_file:
+      - ../.env
+    profiles:
+      - blackwell
+    ports:
+      - "8001:8000"
+    environment:
+      - QWEN_MODEL=Qwen/Qwen2-VL-2B-Instruct
+      - MAX_NEW_TOKENS=2048
+      - USE_FLASH_ATTENTION=false
+    volumes:
+      - qwen-models:/app/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # ============================================================
+  # Qwen VLM Service (7B - для Ada GPUs: RTX 4080/4090 с 24GB+ VRAM)
   # ============================================================
   qwen-vlm-7b:
     build:
@@ -66,11 +104,11 @@ services:
     image: qwen-vlm-service:7b
     container_name: qwen-vlm-7b
     env_file:
-      - ../.env  # Секреты из корня проекта
+      - ../.env
     profiles:
       - large
     ports:
-      - "8001:8001"
+      - "8001:8000"
     environment:
       - QWEN_MODEL=Qwen/Qwen2-VL-7B-Instruct
       - MAX_NEW_TOKENS=2048
@@ -86,11 +124,44 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 180s  # Больше времени для 7B
+      start_period: 180s
+
+  # ============================================================
+  # Qwen VLM Service (7B - для Blackwell GPUs: RTX 5090 с 24GB+ VRAM)
+  # ============================================================
+  qwen-vlm-7b-blackwell:
+    image: qwen-vlm-service:7b-cu128
+    container_name: qwen-vlm-7b-blackwell
+    env_file:
+      - ../.env
+    profiles:
+      - blackwell-large
+    ports:
+      - "8001:8000"
+    environment:
+      - QWEN_MODEL=Qwen/Qwen2-VL-7B-Instruct
+      - MAX_NEW_TOKENS=2048
+      - USE_FLASH_ATTENTION=false
+    volumes:
+      - qwen-models:/app/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
 
   # ============================================================
   # DeepSeek-OCR Service (универсальный для любых GPU)

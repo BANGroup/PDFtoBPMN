@@ -6,6 +6,36 @@
 
 ---
 
+## [27-01-2026] - Docker с поддержкой Blackwell GPU (RTX 5070/5080/5090)
+
+### Добавлено
+
+**Docker образ qwen-vlm-service:2b-cu128 для Blackwell:**
+- ✅ Образ с PyTorch 2.10.0+cu128 (CUDA 12.8)
+- ✅ Полная совместимость с RTX 5080 (sm_120)
+- ✅ Базовый образ: `nvidia/cuda:12.8.1-runtime-ubuntu22.04`
+- ✅ Размер: 18.1GB (включает PyTorch + CUDA libs)
+- ✅ Тест OCR успешен: "Привет, Docker!" распознан за 1.68s
+- ✅ VRAM использование: ~5.7GB для 2B модели
+
+**Новые профили docker-compose для Blackwell:**
+- ✅ `blackwell` — Qwen 2B с cu128 (RTX 5070/5080)
+- ✅ `blackwell-large` — Qwen 7B с cu128 (RTX 5090)
+- ✅ Обновлена документация `docker/README.md`
+- ✅ Все порты исправлены: 8001:8000 (внешний:внутренний)
+
+**Docker установлен нативно в WSL:**
+- ✅ docker.io + docker-compose-v2
+- ✅ nvidia-container-toolkit настроен
+- ✅ GPU доступен в контейнерах: RTX 5080 (sm_120)
+
+### Исправлено
+
+- ⚠️ `CUDA error: no kernel image` с PyTorch 2.5.1+cu124 на RTX 5080
+- ✅ Решение: образ с cu128 для Blackwell GPUs
+
+---
+
 ## [26-01-2026] - Этап 0: Quick Wins (Layout Detection + VLM OCR)
 
 ### Добавлено

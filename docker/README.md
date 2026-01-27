@@ -52,12 +52,33 @@ python3 scripts/utils/run_document.py input/doc.pdf --ocr-service qwen
 
 ## Профили Docker Compose
 
-| Профиль | Сервис | Модель | VRAM | Порт | Команда |
-|---------|--------|--------|------|------|---------|
-| **default** | Qwen | 2B | ~4GB | 8001 | `docker compose up` |
-| **large** | Qwen | 7B | ~14GB | 8001 | `docker compose --profile large up` |
-| **deepseek** | DeepSeek | 3B | ~8GB | 8000 | `docker compose --profile deepseek up` |
-| **deepseek-safe** | DeepSeek | 3B (no flash) | ~10GB | 8000 | `docker compose --profile deepseek-safe up` |
+### Выбор по GPU архитектуре
+
+| GPU | Архитектура | CUDA | PyTorch | Профиль |
+|-----|-------------|------|---------|---------|
+| RTX 4080/4090 | Ada (sm_89) | 12.4+ | 2.5+ | `default`, `large` |
+| RTX 5070/5080/5090 | **Blackwell (sm_120)** | **12.8+** | **2.10+cu128** | `blackwell`, `blackwell-large` |
+
+### Все профили
+
+| Профиль | Сервис | Модель | VRAM | PyTorch | Команда |
+|---------|--------|--------|------|---------|---------|
+| **default** | Qwen | 2B | ~5GB | 2.5+cu124 | `docker compose up` |
+| **blackwell** | Qwen | 2B | ~5GB | **2.10+cu128** | `docker compose --profile blackwell up` |
+| **large** | Qwen | 7B | ~14GB | 2.5+cu124 | `docker compose --profile large up` |
+| **blackwell-large** | Qwen | 7B | ~14GB | **2.10+cu128** | `docker compose --profile blackwell-large up` |
+| **deepseek** | DeepSeek | 3B | ~8GB | 2.5+ | `docker compose --profile deepseek up` |
+| **deepseek-safe** | DeepSeek | 3B | ~10GB | 2.5+ | `docker compose --profile deepseek-safe up` |
+
+### ⚠️ Важно: RTX 5080/5090 требуют профиль `blackwell`
+
+```bash
+# ❌ НЕ РАБОТАЕТ на RTX 5080/5090:
+docker compose up  # CUDA error: no kernel image
+
+# ✅ РАБОТАЕТ на RTX 5080/5090:
+docker compose --profile blackwell up
+```
 
 ## Рекомендации по GPU
 

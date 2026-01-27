@@ -1,8 +1,8 @@
 # Qwen VLM Service Dependencies
 # Версии зафиксированы для воспроизводимости
+# ВАЖНО: torch устанавливается отдельно в Dockerfile (cu128 для Blackwell)
 
-# Core
-torch>=2.4.0
+# Core (без torch - устанавливается отдельно)
 transformers>=4.45.0
 accelerate>=0.34.0
 

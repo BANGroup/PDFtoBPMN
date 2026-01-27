@@ -388,12 +388,16 @@ python3 scripts/utils/run_document.py input/document.pdf
 
 **Docker профили:**
 
-| Профиль | Сервис | Модель | VRAM | Команда |
-|---------|--------|--------|------|---------|
-| default | Qwen | 2B | ~4GB | `docker compose up` |
-| large | Qwen | 7B | ~14GB | `docker compose --profile large up` |
-| deepseek | DeepSeek | 3B | ~8GB | `docker compose --profile deepseek up` |
-| deepseek-safe | DeepSeek | 3B (no flash) | ~10GB | `docker compose --profile deepseek-safe up` |
+| Профиль | Сервис | Модель | VRAM | GPU | Команда |
+|---------|--------|--------|------|-----|---------|
+| default | Qwen | 2B | ~5GB | Ada | `docker compose up` |
+| **blackwell** | Qwen | 2B | ~5GB | **Blackwell** | `docker compose --profile blackwell up` |
+| large | Qwen | 7B | ~14GB | Ada | `docker compose --profile large up` |
+| **blackwell-large** | Qwen | 7B | ~14GB | **Blackwell** | `docker compose --profile blackwell-large up` |
+| deepseek | DeepSeek | 3B | ~8GB | Any | `docker compose --profile deepseek up` |
+| deepseek-safe | DeepSeek | 3B | ~10GB | Any | `docker compose --profile deepseek-safe up` |
+
+**⚠️ Для RTX 5070/5080/5090 (Blackwell sm_120) использовать профили `blackwell`!**
 
 **Использование:**
 
@@ -427,7 +431,8 @@ ocr = OCRServiceFactory.create(service_type="deepseek")
 - [x] QwenRemoteService клиент
 - [x] Factory обновлён
 - [x] Все 15 тестов проходят
-- [ ] Тест 7B на RTX 5090 (в процессе)
+- [x] **Docker образ 2B-cu128 собран и протестирован на RTX 5080** ✅
+- [ ] Тест 7B на RTX 5090 (ожидает пользователя)
 
 **Статус DeepSeek:**
 - [x] FastAPI сервис создан
@@ -435,7 +440,7 @@ ocr = OCRServiceFactory.create(service_type="deepseek")
 - [x] Профили deepseek и deepseek-safe
 - [x] Поддержка GPU: RTX 4080/4090/5080/5090/H100
 - [x] Локальный DeepSeek проверен на RTX 5080
-- [ ] Docker образ собран и протестирован
+- [ ] Docker образ собран и протестирован (TODO)
 
 **Рекомендации по GPU:**
 
