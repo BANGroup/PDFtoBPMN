@@ -1,0 +1,795 @@
+"""
+Генератор графа документов СМК
+Строит граф связей между документами и процессами
+"""
+
+import json
+from pathlib import Path
+from typing import List, Dict, Set
+from datetime import datetime
+from collections import defaultdict
+
+from .models import (
+    Document, DocumentGraph, GraphNode, GraphEdge,
+    ProcessGroup, DocumentType
+)
+from .parser import (
+    scan_documents_folder, get_process_info, normalize_process_code,
+    PROCESS_REGISTRY
+)
+
+
+class DocumentGraphBuilder:
+    """Строитель графа документов"""
+    
+    def __init__(self):
+        self.graph = DocumentGraph()
+        self.documents: List[Document] = []
+        self.processes: Set[str] = set()
+        self.process_groups: Set[ProcessGroup] = set()
+    
+    def scan_folder(self, folder_path: Path) -> int:
+        """
+        Сканировать папку с документами
+        
+        Returns:
+            Количество найденных документов
+        """
+        docs = scan_documents_folder(folder_path)
+        self.documents.extend(docs)
+        return len(docs)
+    
+    def build_graph(self, include_root: bool = True) -> DocumentGraph:
+        """
+        Построить граф из загруженных документов
+        
+        Args:
+            include_root: Добавить корневой узел СМК
+        """
+        self.graph = DocumentGraph()
+        
+        # 1. Добавляем корневой узел
+        if include_root:
+            self.graph.add_node(GraphNode(
+                id="root_smk",
+                label="СМК",
+                node_type="root",
+                data={
+                    "description": "Система менеджмента качества",
+                    "standard": "ISO 9001:2015"
+                }
+            ))
+        
+        # 2. Собираем уникальные процессы и группы
+        for doc in self.documents:
+            if doc.process_id:
+                self.processes.add(doc.process_id)
+                self.process_groups.add(doc.process_group)
+        
+        # 3. Добавляем узлы групп процессов
+        group_colors = {
+            ProcessGroup.M: "#3498db",  # Синий
+            ProcessGroup.B: "#2ecc71",  # Зеленый
+            ProcessGroup.V: "#9b59b6",  # Фиолетовый
+            ProcessGroup.UNKNOWN: "#95a5a6"  # Серый
+        }
+        
+        for group in self.process_groups:
+            if group == ProcessGroup.UNKNOWN:
+                continue
+                
+            self.graph.add_node(GraphNode(
+                id=f"group_{group.name}",
+                label=group.value,
+                node_type="process_group",
+                data={
+                    "color": group_colors.get(group, "#95a5a6"),
+                    "group_code": group.name
+                }
+            ))
+            
+            # Связь группы с корнем
+            if include_root:
+                self.graph.add_edge(GraphEdge(
+                    source="root_smk",
+                    target=f"group_{group.name}",
+                    edge_type="hierarchy"
+                ))
+        
+        # 4. Добавляем узлы процессов
+        process_colors = {
+            ProcessGroup.M: "#5dade2",
+            ProcessGroup.B: "#58d68d",
+            ProcessGroup.V: "#bb8fce",
+        }
+        
+        for process_id in sorted(self.processes):
+            normalized = normalize_process_code(process_id)
+            process_info = get_process_info(normalized)
+            
+            if process_info:
+                group = process_info['group']
+                label = f"{normalized}: {process_info['name']}"
+            else:
+                # Определяем группу по первой букве
+                first_char = normalized[0] if normalized else ''
+                if first_char == 'М':
+                    group = ProcessGroup.M
+                elif first_char == 'Б':
+                    group = ProcessGroup.B
+                elif first_char == 'В':
+                    group = ProcessGroup.V
+                else:
+                    group = ProcessGroup.UNKNOWN
+                label = normalized
+            
+            self.graph.add_node(GraphNode(
+                id=f"process_{normalized}",
+                label=label,
+                node_type="process",
+                data={
+                    "process_code": normalized,
+                    "color": process_colors.get(group, "#95a5a6"),
+                    "group": group.name
+                }
+            ))
+            
+            # Связь процесса с группой
+            if group != ProcessGroup.UNKNOWN:
+                self.graph.add_edge(GraphEdge(
+                    source=f"group_{group.name}",
+                    target=f"process_{normalized}",
+                    edge_type="hierarchy"
+                ))
+        
+        # 5. Добавляем узлы документов
+        doc_type_colors = {
+            DocumentType.DP: "#f39c12",   # Оранжевый
+            DocumentType.RD: "#e74c3c",   # Красный
+            DocumentType.ST: "#1abc9c",   # Бирюзовый
+            DocumentType.KD: "#34495e",   # Темно-серый
+            DocumentType.RG: "#f1c40f",   # Желтый
+            DocumentType.RK: "#e91e63",   # Розовый
+            DocumentType.IOT: "#00bcd4",  # Голубой
+            DocumentType.TPM: "#607d8b",  # Серо-синий
+        }
+        
+        for doc in self.documents:
+            doc_id = f"doc_{doc.code.replace('.', '_').replace('-', '_')}"
+            
+            self.graph.add_node(GraphNode(
+                id=doc_id,
+                label=doc.code,
+                node_type="document",
+                data={
+                    "doc_type": doc.doc_type.value,
+                    "doc_type_code": doc.doc_type.name,
+                    "process_code": doc.process_code,
+                    "version": doc.version,
+                    "file_path": doc.file_path,
+                    "color": doc_type_colors.get(doc.doc_type, "#bdc3c7"),
+                }
+            ))
+            
+            # Связь документа с процессом
+            if doc.process_id:
+                normalized = normalize_process_code(doc.process_id)
+                self.graph.add_edge(GraphEdge(
+                    source=f"process_{normalized}",
+                    target=doc_id,
+                    edge_type="contains"
+                ))
+        
+        # 6. Метаданные
+        self.graph.metadata = {
+            "generated_at": datetime.now().isoformat(),
+            "total_documents": len(self.documents),
+            "total_processes": len(self.processes),
+            "total_groups": len([g for g in self.process_groups if g != ProcessGroup.UNKNOWN]),
+            "statistics": self._calculate_statistics()
+        }
+        
+        return self.graph
+    
+    def _calculate_statistics(self) -> Dict:
+        """Рассчитать статистику по документам"""
+        stats = {
+            "by_type": defaultdict(int),
+            "by_group": defaultdict(int),
+            "by_process": defaultdict(int)
+        }
+        
+        for doc in self.documents:
+            stats["by_type"][doc.doc_type.value] += 1
+            stats["by_group"][doc.process_group.value] += 1
+            if doc.process_id:
+                stats["by_process"][normalize_process_code(doc.process_id)] += 1
+        
+        return {
+            "by_type": dict(stats["by_type"]),
+            "by_group": dict(stats["by_group"]),
+            "by_process": dict(stats["by_process"])
+        }
+    
+    def export_json(self, output_path: Path):
+        """Экспортировать граф в JSON файл"""
+        data = self.graph.to_cytoscape_json()
+        
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        
+        return output_path
+    
+    def export_html(self, output_path: Path, template_path: Path = None):
+        """
+        Экспортировать граф в HTML файл с встроенным визуализатором
+        
+        Args:
+            output_path: Путь к выходному HTML файлу
+            template_path: Путь к шаблону HTML (опционально)
+        """
+        data = self.graph.to_cytoscape_json()
+        json_data = json.dumps(data, ensure_ascii=False, indent=2)
+        
+        html_content = generate_html_viewer(json_data, self.graph.metadata)
+        
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        
+        return output_path
+
+
+def generate_html_viewer(graph_json: str, metadata: Dict) -> str:
+    """Генерация HTML визуализатора с Cytoscape.js"""
+    
+    stats_html = ""
+    if metadata.get("statistics"):
+        stats = metadata["statistics"]
+        
+        # Статистика по типам
+        if stats.get("by_type"):
+            stats_html += "<h4>По типам документов:</h4><ul>"
+            for doc_type, count in sorted(stats["by_type"].items(), key=lambda x: -x[1]):
+                stats_html += f"<li>{doc_type}: {count}</li>"
+            stats_html += "</ul>"
+        
+        # Статистика по группам
+        if stats.get("by_group"):
+            stats_html += "<h4>По группам процессов:</h4><ul>"
+            for group, count in sorted(stats["by_group"].items(), key=lambda x: -x[1]):
+                stats_html += f"<li>{group}: {count}</li>"
+            stats_html += "</ul>"
+    
+    return f'''<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Граф документов СМК</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            height: 100vh;
+            overflow: hidden;
+        }}
+        
+        .container {{
+            display: flex;
+            height: 100vh;
+        }}
+        
+        #cy {{
+            flex: 1;
+            background: #16213e;
+        }}
+        
+        .sidebar {{
+            width: 350px;
+            background: #0f3460;
+            padding: 20px;
+            overflow-y: auto;
+            border-left: 2px solid #e94560;
+        }}
+        
+        .sidebar h1 {{
+            font-size: 1.5em;
+            margin-bottom: 15px;
+            color: #e94560;
+        }}
+        
+        .sidebar h2 {{
+            font-size: 1.2em;
+            margin: 15px 0 10px;
+            color: #0f9b8e;
+            border-bottom: 1px solid #0f9b8e;
+            padding-bottom: 5px;
+        }}
+        
+        .sidebar h3 {{
+            font-size: 1em;
+            margin: 10px 0 5px;
+            color: #ccc;
+        }}
+        
+        .sidebar h4 {{
+            font-size: 0.9em;
+            margin: 10px 0 5px;
+            color: #aaa;
+        }}
+        
+        .sidebar ul {{
+            list-style: none;
+            padding-left: 10px;
+        }}
+        
+        .sidebar li {{
+            padding: 3px 0;
+            font-size: 0.85em;
+            color: #ddd;
+        }}
+        
+        .info-panel {{
+            background: #1a1a2e;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+        }}
+        
+        .info-panel p {{
+            margin: 5px 0;
+            font-size: 0.9em;
+        }}
+        
+        .info-panel .label {{
+            color: #888;
+        }}
+        
+        .info-panel .value {{
+            color: #fff;
+            font-weight: 500;
+        }}
+        
+        .controls {{
+            margin-bottom: 20px;
+        }}
+        
+        .controls input {{
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            background: #1a1a2e;
+            color: #fff;
+            font-size: 14px;
+        }}
+        
+        .controls input::placeholder {{
+            color: #666;
+        }}
+        
+        .filter-buttons {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 10px;
+        }}
+        
+        .filter-btn {{
+            padding: 5px 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }}
+        
+        .filter-btn:hover {{
+            opacity: 0.8;
+        }}
+        
+        .filter-btn.active {{
+            box-shadow: 0 0 5px #fff;
+        }}
+        
+        .filter-btn.M {{ background: #3498db; color: white; }}
+        .filter-btn.B {{ background: #2ecc71; color: white; }}
+        .filter-btn.V {{ background: #9b59b6; color: white; }}
+        .filter-btn.all {{ background: #e94560; color: white; }}
+        
+        .legend {{
+            margin-top: 15px;
+        }}
+        
+        .legend-item {{
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+            font-size: 0.85em;
+        }}
+        
+        .legend-color {{
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+            margin-right: 8px;
+        }}
+        
+        .stats {{
+            font-size: 0.9em;
+            margin-top: 20px;
+        }}
+        
+        .meta {{
+            font-size: 0.75em;
+            color: #666;
+            margin-top: 20px;
+            padding-top: 10px;
+            border-top: 1px solid #333;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="cy"></div>
+        <div class="sidebar">
+            <h1>📊 Граф документов СМК</h1>
+            
+            <div class="controls">
+                <input type="text" id="search" placeholder="🔍 Поиск документа...">
+                
+                <div class="filter-buttons">
+                    <button class="filter-btn all active" onclick="filterByGroup('all')">Все</button>
+                    <button class="filter-btn M" onclick="filterByGroup('M')">М (Менеджмент)</button>
+                    <button class="filter-btn B" onclick="filterByGroup('B')">Б (Жизн. цикл)</button>
+                    <button class="filter-btn V" onclick="filterByGroup('V')">В (Обеспечение)</button>
+                </div>
+            </div>
+            
+            <h2>ℹ️ Информация об элементе</h2>
+            <div class="info-panel" id="info-panel">
+                <p><span class="label">Кликните на элемент для просмотра информации</span></p>
+            </div>
+            
+            <h2>📋 Легенда</h2>
+            <div class="legend">
+                <h4>Узлы:</h4>
+                <div class="legend-item"><span class="legend-color" style="background:#e91e63"></span> Руководство по качеству</div>
+                <div class="legend-item"><span class="legend-color" style="background:#3498db"></span> Группа М (Менеджмент)</div>
+                <div class="legend-item"><span class="legend-color" style="background:#2ecc71"></span> Группа Б (Жизн. цикл)</div>
+                <div class="legend-item"><span class="legend-color" style="background:#9b59b6"></span> Группа В (Обеспечение)</div>
+                <div class="legend-item"><span class="legend-color" style="background:#f39c12"></span> ДП - Документация процесса</div>
+                <div class="legend-item"><span class="legend-color" style="background:#e74c3c"></span> РД - Руководство по деятельности</div>
+                <div class="legend-item"><span class="legend-color" style="background:#00bcd4"></span> ИОТ - Инструкция по ОТ</div>
+            </div>
+            
+            <h2>📈 Статистика</h2>
+            <div class="stats">
+                <p><span class="label">Документов:</span> <span class="value">{metadata.get('total_documents', 0)}</span></p>
+                <p><span class="label">Процессов:</span> <span class="value">{metadata.get('total_processes', 0)}</span></p>
+                <p><span class="label">Групп:</span> <span class="value">{metadata.get('total_groups', 0)}</span></p>
+                {stats_html}
+            </div>
+            
+            <div class="meta">
+                <p>Сгенерировано: {metadata.get('generated_at', 'N/A')}</p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Данные графа
+        const graphData = {graph_json};
+        
+        // Инициализация Cytoscape
+        const cy = cytoscape({{
+            container: document.getElementById('cy'),
+            elements: graphData.elements,
+            style: [
+                // Узлы по умолчанию
+                {{
+                    selector: 'node',
+                    style: {{
+                        'label': 'data(label)',
+                        'text-valign': 'center',
+                        'text-halign': 'center',
+                        'background-color': 'data(color)',
+                        'color': '#fff',
+                        'font-size': '10px',
+                        'text-wrap': 'wrap',
+                        'text-max-width': '80px',
+                        'width': 40,
+                        'height': 40,
+                        'border-width': 2,
+                        'border-color': '#fff',
+                    }}
+                }},
+                // Корневой узел
+                {{
+                    selector: 'node[type="root"]',
+                    style: {{
+                        'width': 80,
+                        'height': 80,
+                        'font-size': '14px',
+                        'font-weight': 'bold',
+                        'background-color': '#e91e63',
+                    }}
+                }},
+                // Группы процессов
+                {{
+                    selector: 'node[type="process_group"]',
+                    style: {{
+                        'width': 60,
+                        'height': 60,
+                        'font-size': '11px',
+                        'font-weight': 'bold',
+                        'text-max-width': '100px',
+                    }}
+                }},
+                // Процессы
+                {{
+                    selector: 'node[type="process"]',
+                    style: {{
+                        'width': 50,
+                        'height': 50,
+                        'font-size': '9px',
+                        'text-max-width': '120px',
+                    }}
+                }},
+                // Документы
+                {{
+                    selector: 'node[type="document"]',
+                    style: {{
+                        'width': 35,
+                        'height': 35,
+                        'font-size': '8px',
+                        'text-max-width': '80px',
+                        'shape': 'rectangle',
+                    }}
+                }},
+                // Выделенный узел
+                {{
+                    selector: 'node:selected',
+                    style: {{
+                        'border-width': 4,
+                        'border-color': '#e94560',
+                    }}
+                }},
+                // Подсвеченный узел
+                {{
+                    selector: 'node.highlighted',
+                    style: {{
+                        'border-width': 4,
+                        'border-color': '#f1c40f',
+                        'z-index': 9999,
+                    }}
+                }},
+                // Затемненный узел
+                {{
+                    selector: 'node.dimmed',
+                    style: {{
+                        'opacity': 0.2,
+                    }}
+                }},
+                // Связи
+                {{
+                    selector: 'edge',
+                    style: {{
+                        'width': 1.5,
+                        'line-color': '#555',
+                        'target-arrow-color': '#555',
+                        'target-arrow-shape': 'triangle',
+                        'curve-style': 'bezier',
+                        'arrow-scale': 0.8,
+                    }}
+                }},
+                // Связи hierarchy
+                {{
+                    selector: 'edge[type="hierarchy"]',
+                    style: {{
+                        'line-color': '#0f9b8e',
+                        'target-arrow-color': '#0f9b8e',
+                        'width': 2,
+                    }}
+                }},
+                // Связи contains
+                {{
+                    selector: 'edge[type="contains"]',
+                    style: {{
+                        'line-color': '#666',
+                        'target-arrow-color': '#666',
+                        'line-style': 'dashed',
+                    }}
+                }},
+                // Связи подсвеченные
+                {{
+                    selector: 'edge.highlighted',
+                    style: {{
+                        'line-color': '#e94560',
+                        'target-arrow-color': '#e94560',
+                        'width': 3,
+                        'z-index': 9999,
+                    }}
+                }},
+                // Затемненные связи
+                {{
+                    selector: 'edge.dimmed',
+                    style: {{
+                        'opacity': 0.1,
+                    }}
+                }},
+            ],
+            layout: {{
+                name: 'cose',
+                idealEdgeLength: 100,
+                nodeOverlap: 20,
+                refresh: 20,
+                fit: true,
+                padding: 30,
+                randomize: false,
+                componentSpacing: 100,
+                nodeRepulsion: 400000,
+                edgeElasticity: 100,
+                nestingFactor: 5,
+                gravity: 80,
+                numIter: 1000,
+                initialTemp: 200,
+                coolingFactor: 0.95,
+                minTemp: 1.0
+            }}
+        }});
+        
+        // Информационная панель
+        function showInfo(node) {{
+            const data = node.data();
+            const panel = document.getElementById('info-panel');
+            
+            let html = '';
+            
+            if (data.type === 'root') {{
+                html = `
+                    <p><span class="label">Тип:</span> <span class="value">Корневой элемент</span></p>
+                    <p><span class="label">Описание:</span> <span class="value">${{data.description || 'Система менеджмента качества'}}</span></p>
+                    <p><span class="label">Стандарт:</span> <span class="value">${{data.standard || 'ISO 9001:2015'}}</span></p>
+                `;
+            }} else if (data.type === 'process_group') {{
+                html = `
+                    <p><span class="label">Тип:</span> <span class="value">Группа процессов</span></p>
+                    <p><span class="label">Название:</span> <span class="value">${{data.label}}</span></p>
+                    <p><span class="label">Код:</span> <span class="value">${{data.group_code}}</span></p>
+                `;
+            }} else if (data.type === 'process') {{
+                html = `
+                    <p><span class="label">Тип:</span> <span class="value">Бизнес-процесс</span></p>
+                    <p><span class="label">Название:</span> <span class="value">${{data.label}}</span></p>
+                    <p><span class="label">Код:</span> <span class="value">${{data.process_code}}</span></p>
+                    <p><span class="label">Группа:</span> <span class="value">${{data.group}}</span></p>
+                `;
+            }} else if (data.type === 'document') {{
+                html = `
+                    <p><span class="label">Тип:</span> <span class="value">${{data.doc_type}}</span></p>
+                    <p><span class="label">Код:</span> <span class="value">${{data.label}}</span></p>
+                    <p><span class="label">Процесс:</span> <span class="value">${{data.process_code || 'Не указан'}}</span></p>
+                    <p><span class="label">Версия:</span> <span class="value">${{data.version}}</span></p>
+                `;
+            }}
+            
+            panel.innerHTML = html;
+        }}
+        
+        // Подсветка связанных узлов
+        function highlightConnected(node) {{
+            cy.elements().removeClass('highlighted dimmed');
+            
+            const neighborhood = node.neighborhood().add(node);
+            cy.elements().not(neighborhood).addClass('dimmed');
+            neighborhood.addClass('highlighted');
+        }}
+        
+        function clearHighlight() {{
+            cy.elements().removeClass('highlighted dimmed');
+        }}
+        
+        // События
+        cy.on('tap', 'node', function(evt) {{
+            const node = evt.target;
+            showInfo(node);
+            highlightConnected(node);
+        }});
+        
+        cy.on('tap', function(evt) {{
+            if (evt.target === cy) {{
+                clearHighlight();
+                document.getElementById('info-panel').innerHTML = 
+                    '<p><span class="label">Кликните на элемент для просмотра информации</span></p>';
+            }}
+        }});
+        
+        // Поиск
+        document.getElementById('search').addEventListener('input', function(e) {{
+            const query = e.target.value.toLowerCase();
+            
+            if (!query) {{
+                clearHighlight();
+                return;
+            }}
+            
+            cy.elements().removeClass('highlighted dimmed');
+            
+            const matches = cy.nodes().filter(function(node) {{
+                const label = node.data('label') || '';
+                const code = node.data('process_code') || '';
+                return label.toLowerCase().includes(query) || code.toLowerCase().includes(query);
+            }});
+            
+            if (matches.length > 0) {{
+                cy.elements().not(matches).addClass('dimmed');
+                matches.addClass('highlighted');
+            }}
+        }});
+        
+        // Фильтр по группе
+        function filterByGroup(group) {{
+            // Обновляем кнопки
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`.filter-btn.${{group}}`).classList.add('active');
+            
+            cy.elements().removeClass('highlighted dimmed');
+            
+            if (group === 'all') {{
+                return;
+            }}
+            
+            // Показываем только документы и процессы из выбранной группы
+            const nodes = cy.nodes().filter(function(node) {{
+                const nodeGroup = node.data('group');
+                const type = node.data('type');
+                
+                if (type === 'root') return true;
+                if (type === 'process_group') return node.data('group_code') === group;
+                if (type === 'process' || type === 'document') return nodeGroup === group;
+                return false;
+            }});
+            
+            const connectedEdges = nodes.connectedEdges();
+            const visibleElements = nodes.add(connectedEdges);
+            
+            cy.elements().not(visibleElements).addClass('dimmed');
+        }}
+    </script>
+</body>
+</html>
+'''
+
+
+if __name__ == "__main__":
+    # Тест
+    from pathlib import Path
+    
+    builder = DocumentGraphBuilder()
+    
+    # Сканируем папку с документами
+    docs_path = Path("/home/budnik_an/Obligations/input2/BND/pdf")
+    count = builder.scan_folder(docs_path)
+    print(f"Найдено документов: {count}")
+    
+    # Строим граф
+    graph = builder.build_graph()
+    print(f"Узлов: {len(graph.nodes)}, Связей: {len(graph.edges)}")
+    
+    # Экспортируем
+    output_dir = Path("/home/budnik_an/Obligations/output/document_graph")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    builder.export_json(output_dir / "graph_data.json")
+    builder.export_html(output_dir / "graph_viewer.html")
+    
+    print(f"Граф экспортирован в {output_dir}")
