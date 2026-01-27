@@ -48,6 +48,28 @@
 - ℹ️ Без Flash Attention модель работает на GPU, просто чуть медленнее
 - ℹ️ Для 2B модели Flash Attention не критичен (VRAM достаточно)
 
+**Тестирование DeepSeek OCR (локальный venv):**
+- ✅ DeepSeek-OCR venv сохранён с flash_attn 2.7.3 + torch 2.9.0+cu128
+- ✅ Локальный сервер работает с Flash Attention 2
+- ✅ OCR тест: 1.29s (быстрее Qwen благодаря flash_attn)
+- ✅ Возвращает bbox координаты для каждого блока текста
+- ⚠️ Кириллица: транслитерация вместо русского ("npubet" vs "Привет")
+
+**Сравнение Qwen vs DeepSeek:**
+
+| Метрика | Qwen 2B (Docker) | DeepSeek (Local) |
+|---------|------------------|------------------|
+| Время | 1.95s | 1.29s |
+| Flash Attention | ❌ | ✅ 2.7.3 |
+| Русский текст | ✅ точный | ⚠️ транслит |
+| BBox координаты | ❌ | ✅ |
+| VRAM | ~5.7GB | ~7.7GB |
+
+**Обновлён Docker для DeepSeek:**
+- ✅ app.py переписан с model.infer() API
+- ✅ Dockerfile на nvidia/cuda:12.8.1 + cu128
+- ✅ Flash Attention отключен в Docker (для универсальности)
+
 ---
 
 ## [26-01-2026] - Этап 0: Quick Wins (Layout Detection + VLM OCR)

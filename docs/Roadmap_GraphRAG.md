@@ -444,8 +444,14 @@ ocr = OCRServiceFactory.create(service_type="deepseek")
 - [x] Dockerfile с flash_attn (опционально)
 - [x] Профили deepseek и deepseek-safe
 - [x] Поддержка GPU: RTX 4080/4090/5080/5090/H100
-- [x] Локальный DeepSeek проверен на RTX 5080
-- [ ] Docker образ собран и протестирован (TODO)
+- [x] **Локальный DeepSeek протестирован на RTX 5080** ✅
+  - flash_attn 2.7.3 + torch 2.9.0+cu128
+  - OCR: 1.29s (быстрее Qwen)
+  - BBox координаты: ✅
+  - Кириллица: ⚠️ транслитерация
+- [x] **app.py обновлён с model.infer() API** ✅
+- [x] **Dockerfile обновлён на cu128** ✅
+- [ ] Docker образ собрать и протестировать (TODO)
 
 **Рекомендации по GPU:**
 

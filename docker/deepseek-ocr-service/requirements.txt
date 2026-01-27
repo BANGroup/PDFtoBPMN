@@ -1,9 +1,10 @@
 # DeepSeek-OCR Service Dependencies
+# ВАЖНО: torch устанавливается отдельно в Dockerfile (cu128 для Blackwell)
 
-# Core ML
-torch>=2.4.0
+# Core ML (без torch)
 transformers>=4.45.0
 accelerate>=0.34.0
+safetensors>=0.4.0
 
 # API
 fastapi>=0.115.0
@@ -14,8 +15,5 @@ python-multipart>=0.0.12
 # Image processing
 Pillow>=10.4.0
 
-# Utilities
-requests>=2.32.0
-
-# flash_attn устанавливается отдельно в Dockerfile
-# (может не собраться для некоторых GPU архитектур)
+# Optional: Flash Attention (требует компиляции под GPU)
+# flash-attn>=2.6.0  # Раскомментировать для ускорения
