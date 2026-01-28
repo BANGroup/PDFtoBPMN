@@ -253,8 +253,8 @@ async def ocr_figure(
                         if current_block and current_block['content'].strip():
                             blocks.append(current_block)
                         
-                        # Извлекаем текст элемента из <|ref|>...<|/ref|>
-                        ref_text = line.split('<|ref|>')[1].split('<|/ref|>')[0]
+                        # Извлекаем тип элемента из <|ref|>...<|/ref|>
+                        ref_type = line.split('<|ref|>')[1].split('<|/ref|>')[0]
                         
                         # Извлекаем bbox если есть
                         bbox_data = [0, 0, 100, 100]  # default
@@ -268,32 +268,40 @@ async def ocr_figure(
                             except:
                                 pass
                         
-                        current_block = {
-                            'id': f'ocr_block_{block_counter}',
-                            'type': 'text',  # Для ocr_simple всегда text
-                            'content': ref_text,  # ИСПРАВЛЕНО: Текст элемента из <|ref|>
-                            'bbox': {
-                                'x0': float(bbox_data[0]),
-                                'y0': float(bbox_data[1]),
-                                'x1': float(bbox_data[2]),
-                                'y1': float(bbox_data[3])
-                            },
-                            'confidence': 1.0,
-                            'metadata': {}
-                        }
-                        block_counter += 1
-                        markdown_text += ref_text + '\n'
+                        # ИСПРАВЛЕНИЕ: Текст находится на СЛЕДУЮЩЕЙ строке после <|ref|><|det|>
+                        actual_text = ""
+                        if i + 1 < len(lines):
+                            next_line = lines[i + 1].strip()
+                            # Если следующая строка НЕ начинается с тега - это текст
+                            if next_line and not next_line.startswith('<|') and not next_line.startswith('==='):
+                                actual_text = next_line
+                                i += 1  # Пропускаем строку с текстом
                         
-                        # Добавляем блок сразу (каждый элемент - отдельный блок)
-                        blocks.append(current_block)
-                        current_block = None
+                        if actual_text:  # Добавляем блок только если есть текст
+                            current_block = {
+                                'id': f'ocr_block_{block_counter}',
+                                'type': ref_type,  # Тип: text, title и т.д.
+                                'content': actual_text,  # ИСПРАВЛЕНО: Реальный текст со следующей строки
+                                'bbox': {
+                                    'x0': float(bbox_data[0]),
+                                    'y0': float(bbox_data[1]),
+                                    'x1': float(bbox_data[2]),
+                                    'y1': float(bbox_data[3])
+                                },
+                                'confidence': 1.0,
+                                'metadata': {}
+                            }
+                            block_counter += 1
+                            markdown_text += actual_text + '\n'
+                            
+                            # Добавляем блок сразу
+                            blocks.append(current_block)
+                            current_block = None
                     
-                    elif current_block and not line.startswith('<|') and not line.startswith('===') and line.strip():
-                        # Добавляем контент к текущему блоку (текст на следующих строках)
-                        if current_block['content']:
-                            current_block['content'] += '\n'
-                        current_block['content'] += line.strip()
-                        markdown_text += line.strip() + '\n'
+                    elif not line.startswith('<|') and not line.startswith('===') and line.strip():
+                        # Текст без тегов - добавляем к markdown (кроме служебных)
+                        if not line.strip().startswith('BASE:') and not line.strip().startswith('NO PATCHES'):
+                            markdown_text += line.strip() + '\n'
                     
                     i += 1
                 

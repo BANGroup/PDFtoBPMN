@@ -5,7 +5,10 @@
 
 import json
 from pathlib import Path
-from typing import List, Dict, Set, Optional
+from typing import List, Dict, Set, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .hybrid_parser import ParseResult
 from datetime import datetime
 from collections import defaultdict
 
@@ -17,6 +20,18 @@ from .parser import (
     scan_documents_folder, get_process_info, normalize_process_code,
     PROCESS_REGISTRY
 )
+
+# Импорт гибридного парсера для извлечения структуры
+try:
+    from .hybrid_parser import (
+        parse_document,
+        format_parse_report,
+        parse_documents_batch,
+        ParseResult,
+    )
+    HYBRID_PARSER_AVAILABLE = True
+except ImportError:
+    HYBRID_PARSER_AVAILABLE = False
 
 
 def _print_progress(current: int, total: int, filename: str):
@@ -150,6 +165,101 @@ class DocumentGraphBuilder:
         print(f"   📄 DOCX найдено: {docx_found} из {total}")
         print(f"   📊 В каталоге: {catalog_found} из {total}")
         return processed
+    
+    def parse_document_structure(self, docx_base_path: Path = None, 
+                                  verbose: bool = True) -> List[ParseResult]:
+        """
+        Парсинг структуры документов с помощью гибридного парсера
+        
+        Использует DOCX если доступен и актуален, иначе PDF с фильтрацией.
+        
+        Args:
+            docx_base_path: Базовая директория для поиска DOCX файлов
+            verbose: Выводить прогресс и отчёты
+            
+        Returns:
+            Список результатов парсинга для каждого документа
+        """
+        if not HYBRID_PARSER_AVAILABLE:
+            print("⚠️ Гибридный парсер недоступен")
+            return []
+        
+        # Определяем базовый путь для DOCX
+        if docx_base_path is None and self.documents:
+            # Автоопределение: ищем папку docx рядом с pdf
+            first_pdf = Path(self.documents[0].file_path) if self.documents[0].file_path else None
+            if first_pdf:
+                # Пробуем разные варианты расположения docx
+                potential_paths = [
+                    first_pdf.parent.parent.parent / "docx",  # input2/BND/docx
+                    first_pdf.parent.parent / "docx",         # input2/docx
+                    first_pdf.parent / "docx",                # pdf/docx
+                ]
+                for p in potential_paths:
+                    if p.exists():
+                        docx_base_path = p
+                        break
+        
+        if docx_base_path and verbose:
+            print(f"📁 Базовая папка DOCX: {docx_base_path}")
+        
+        # Собираем пути к PDF
+        pdf_paths = [Path(doc.file_path) for doc in self.documents 
+                     if doc.file_path and Path(doc.file_path).exists()]
+        
+        if verbose:
+            print(f"\n📊 Парсинг структуры {len(pdf_paths)} документов...")
+        
+        # Запускаем гибридный парсер
+        results = parse_documents_batch(
+            [str(p) for p in pdf_paths],
+            docx_base_dir=str(docx_base_path) if docx_base_path else None,
+            verbose=verbose
+        )
+        
+        # Статистика
+        docx_count = sum(1 for r in results if r.source == "docx")
+        pdf_count = sum(1 for r in results if r.source == "pdf")
+        
+        if verbose:
+            print(f"\n   📄 DOCX (актуален): {docx_count}")
+            print(f"   📕 PDF (fallback): {pdf_count}")
+        
+        # Сохраняем результаты для дальнейшего использования
+        self._parse_results = results
+        
+        return results
+    
+    def generate_parse_reports(self, results: List[ParseResult] = None, 
+                               output_path: Path = None) -> str:
+        """
+        Сгенерировать текстовые отчёты о парсинге
+        
+        Args:
+            results: Результаты парсинга (или берутся из кэша)
+            output_path: Путь для сохранения отчёта
+            
+        Returns:
+            Текст отчёта
+        """
+        if results is None:
+            results = getattr(self, '_parse_results', [])
+        
+        if not results:
+            return "Нет результатов парсинга"
+        
+        reports = []
+        for result in results:
+            reports.append(format_parse_report(result))
+            reports.append("\n")
+        
+        full_report = '\n'.join(reports)
+        
+        if output_path:
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(full_report)
+        
+        return full_report
     
     def build_graph(self, include_root: bool = True) -> DocumentGraph:
         """

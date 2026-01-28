@@ -101,6 +101,29 @@ class NativeExtractor:
         if extract_tables and not PDFPLUMBER_AVAILABLE:
             print("⚠️  pdfplumber не установлен, таблицы не будут извлекаться")
     
+    def _is_header_footer_bbox(self, bbox: BBox, page_height: float) -> bool:
+        """
+        Проверить, находится ли bbox в зоне колонтитулов.
+        
+        Используется для исключения OCR по колонтитулам (header/footer).
+        """
+        header_ratio = 0.08
+        footer_ratio = 0.08
+        max_band_height_ratio = 0.12
+        
+        bbox_height = bbox.y1 - bbox.y0
+        if bbox_height > page_height * max_band_height_ratio:
+            return False
+        
+        header_limit = page_height * header_ratio
+        footer_limit = page_height * (1 - footer_ratio)
+        
+        if bbox.y1 <= header_limit:
+            return True
+        if bbox.y0 >= footer_limit:
+            return True
+        return False
+    
     def extract_page(self, page: fitz.Page, 
                      pdf_path: Optional[str] = None) -> Dict[str, List]:
         """
@@ -266,6 +289,10 @@ class NativeExtractor:
                 bbox_rect = rects[0]
                 
                 bbox = BBox(bbox_rect.x0, bbox_rect.y0, bbox_rect.x1, bbox_rect.y1)
+                
+                # Пропускаем колонтитулы (header/footer), чтобы не отправлять в OCR
+                if self._is_header_footer_bbox(bbox, page.rect.height):
+                    continue
                 area = (bbox.x1 - bbox.x0) * (bbox.y1 - bbox.y0)
                 
                 # Фильтруем маленькие изображения (логотипы, иконки)
@@ -348,6 +375,10 @@ class NativeExtractor:
                 continue
             
             bbox = BBox(*rect_tuple)
+            
+            # Пропускаем колонтитулы (header/footer) для OCR рендера
+            if render_to_image and self._is_header_footer_bbox(bbox, page.rect.height):
+                continue
             
             # Сохраняем векторные данные
             drawing_data = {

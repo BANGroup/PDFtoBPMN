@@ -75,6 +75,7 @@ test_*.py
 # Дополнительные рабочие папки
 input2
 output2
+output3
 
 # Docker
 docker/**/models/
