@@ -73,14 +73,20 @@ def load_model():
         
         # Загрузка модели
         logger.info("   Загрузка модели (это может занять время при первом запуске)...")
-        # Пытаемся использовать flash_attention_2, если не получается - fallback на eager
+        # Пытаемся использовать flash_attention_2, если не отключено
+        disable_flash = os.getenv("OCR_DISABLE_FLASH_ATTN", "0").lower() in {"1", "true", "yes"}
         try:
+            if disable_flash:
+                raise ImportError("flash-attn disabled by OCR_DISABLE_FLASH_ATTN")
             import flash_attn
             attn_impl = 'flash_attention_2'
             logger.info("   ✅ flash-attn обнаружен, используем flash_attention_2")
         except ImportError:
             attn_impl = 'eager'
-            logger.warning("   ⚠️ flash-attn не установлен, используем eager attention (медленнее)")
+            if disable_flash:
+                logger.warning("   ⚠️ flash-attn отключен, используем eager attention (медленнее)")
+            else:
+                logger.warning("   ⚠️ flash-attn не установлен, используем eager attention (медленнее)")
         
         model = AutoModel.from_pretrained(
             model_name,

@@ -555,17 +555,18 @@ def process_documents(
     print(f"{'='*60}")
 
 
-def find_test_documents(input_dir: Path, limit: int = 8) -> List[Path]:
+def find_test_documents(input_dir: Path, limit: int = 8, all_pdfs: bool = False) -> List[Path]:
     """Найти PDF документы для тестирования"""
     pdfs = []
     
     for pdf_dir in sorted(input_dir.glob("**/pdf/*")):
         if pdf_dir.is_dir():
             for pdf_file in pdf_dir.glob("*.pdf"):
-                if "Эталон для печати" in pdf_file.name:
-                    pdfs.append(pdf_file)
-                    if len(pdfs) >= limit:
-                        return pdfs
+                if not all_pdfs and "Эталон для печати" not in pdf_file.name:
+                    continue
+                pdfs.append(pdf_file)
+                if limit > 0 and len(pdfs) >= limit:
+                    return pdfs
     
     return pdfs
 
@@ -574,7 +575,8 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description="Полный парсинг документов с иерархией")
-    parser.add_argument("--limit", type=int, default=8, help="Количество документов")
+    parser.add_argument("--limit", type=int, default=8, help="Количество документов (0 = без ограничения)")
+    parser.add_argument("--all-pdfs", action="store_true", help="Обрабатывать все PDF, не только 'Эталон для печати'")
     parser.add_argument("--no-ocr", action="store_true", help="Отключить OCR")
     parser.add_argument("--pdfplumber", action="store_true", 
                        help="Использовать pdfplumber (лучший порядок текста, OCR только титульной)")
@@ -586,7 +588,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # Находим документы
-    pdfs = find_test_documents(Path(args.input), args.limit)
+    pdfs = find_test_documents(Path(args.input), args.limit, all_pdfs=args.all_pdfs)
     
     if not pdfs:
         print("❌ PDF документы не найдены")

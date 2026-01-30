@@ -99,6 +99,19 @@ def normalize_process_code(code: str) -> str:
     return code
 
 
+def normalize_document_code(code: str) -> str:
+    """Нормализация кода документа для сопоставления"""
+    if not code:
+        return ""
+    mapping = str.maketrans({
+        'A': 'А', 'B': 'В', 'C': 'С', 'E': 'Е', 'H': 'Н',
+        'K': 'К', 'M': 'М', 'O': 'О', 'P': 'Р', 'T': 'Т',
+        'X': 'Х', 'Y': 'У',
+    })
+    normalized = code.strip().upper().translate(mapping)
+    return normalized
+
+
 def parse_document_code(filename: str) -> Optional[Document]:
     """
     Разобрать код документа из имени файла/папки

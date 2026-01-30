@@ -73,7 +73,10 @@ def _crop_header_footer(img: "Image.Image",
 
 def ocr_title_page(pdf_path: str | Path, 
                    ocr_url: str = "http://localhost:8000/ocr/figure",
-                   timeout: int = 60) -> Optional[str]:
+                   timeout: int = 60,
+                   scale: float = 2.0,
+                   fallback_scale: float = 1.0,
+                   prompt_type: str = "default") -> Optional[str]:
     """
     Распознать титульную страницу через OCR.
     
@@ -91,63 +94,72 @@ def ocr_title_page(pdf_path: str | Path,
     if not PIL_AVAILABLE:
         return None
     
+    doc = None
     try:
         doc = fitz.open(str(pdf_path))
         page = doc[0]
         raw_text = page.get_text() or ""
         
-        # Рендерим в изображение (2x для качества)
-        mat = fitz.Matrix(2.0, 2.0)
-        pix = page.get_pixmap(matrix=mat)
-        
-        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-        
-        # Если на странице есть маркеры колонтитула, обрезаем верх/низ
-        if _has_header_footer_markers(raw_text):
-            img = _crop_header_footer(img, crop_top=True, crop_bottom=True)
-        buffer = BytesIO()
-        img.save(buffer, format="JPEG", quality=95)
-        buffer.seek(0)
-        
-        doc.close()
+        def render_to_buffer(render_scale: float) -> BytesIO:
+            mat = fitz.Matrix(render_scale, render_scale)
+            pix = page.get_pixmap(matrix=mat)
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            if _has_header_footer_markers(raw_text):
+                img = _crop_header_footer(img, crop_top=True, crop_bottom=True)
+            buffer = BytesIO()
+            img.save(buffer, format="JPEG", quality=95)
+            buffer.seek(0)
+            return buffer
         
         # Отправляем на OCR
-        response = requests.post(
-            ocr_url,
-            files={"file": ("title.jpg", buffer, "image/jpeg")},
-            data={"prompt_type": "default"},  # default даёт чистый текст
-            timeout=timeout
-        )
-        
-        if response.ok:
+        def request_ocr(buffer: BytesIO) -> Optional[str]:
+            response = requests.post(
+                ocr_url,
+                files={"file": ("title.jpg", buffer, "image/jpeg")},
+                data={"prompt_type": prompt_type},
+                timeout=timeout
+            )
+            if not response.ok:
+                return None
             result = response.json()
             markdown = result.get("markdown", "")
-            
-            # Очищаем от служебных строк
             lines = []
             for line in markdown.split('\n'):
                 line = line.strip()
                 if line and not line.startswith('BASE:') and not line.startswith('NO PATCHES'):
                     lines.append(line)
-            
-            # Формируем титульную страницу
             title_md = "# ТИТУЛЬНАЯ СТРАНИЦА\n\n"
-            
-            # Добавляем стандартный заголовок организации (одинаковый для всех документов)
             title_md += "**ПУБЛИЧНОЕ АКЦИОНЕРНОЕ ОБЩЕСТВО «Авиакомпания «ЮТэйр»**\n\n"
-            
-            # Добавляем распознанный текст
             for line in lines:
                 if line:
                     title_md += f"{line}\n\n"
-            
             return title_md
         
+        try:
+            buffer = render_to_buffer(scale)
+            title_md = request_ocr(buffer)
+            if title_md:
+                return title_md
+        except Exception as exc:
+            print(f"⚠️ Ошибка OCR титульной (scale={scale}): {exc}")
+        if fallback_scale and fallback_scale != scale:
+            try:
+                buffer = render_to_buffer(fallback_scale)
+                title_md = request_ocr(buffer)
+                if title_md:
+                    return title_md
+            except Exception as exc:
+                print(f"⚠️ Ошибка OCR титульной (scale={fallback_scale}): {exc}")
         return None
-        
     except Exception as e:
         print(f"⚠️ Ошибка OCR титульной: {e}")
         return None
+    finally:
+        if doc is not None:
+            try:
+                doc.close()
+            except Exception:
+                pass
 
 
 def is_title_page_corrupted(pdf_path: str | Path) -> bool:
@@ -210,7 +222,7 @@ def extract_text_pdfplumber(pdf_path: str | Path,
     
     # Проверяем нужен ли OCR для титульной
     use_ocr_for_title = ocr_title and is_title_page_corrupted(pdf_path)
-    ocr_client = OCRClient(base_url=ocr_base_url) if ocr_graphics else None
+    ocr_client = OCRClient(base_url=ocr_base_url, max_retries=1, timeout=15) if ocr_graphics else None
     native_extractor = NativeExtractor(
         extract_images=True,
         extract_drawings=True,
@@ -219,6 +231,7 @@ def extract_text_pdfplumber(pdf_path: str | Path,
         vector_render_dpi=300
     ) if ocr_graphics else None
     fitz_doc = fitz.open(str(pdf_path)) if ocr_graphics else None
+    ocr_graphics_active = bool(ocr_graphics and ocr_client and native_extractor and fitz_doc)
     
     with pdfplumber.open(pdf_path) as pdf:
         for i, page in enumerate(pdf.pages):
@@ -311,19 +324,27 @@ def extract_text_pdfplumber(pdf_path: str | Path,
                         markdown_parts.append(_table_to_markdown(data))
 
             # OCR графики (изображения + векторные схемы)
-            if ocr_graphics and ocr_client and native_extractor and fitz_doc:
+            if ocr_graphics_active:
                 fitz_page = fitz_doc[page_num - 1]
                 ocr_chunks = []
+                page_area = fitz_page.rect.width * fitz_page.rect.height
                 # Растровые изображения
                 for image_block in native_extractor.extract_image_blocks(fitz_page):
-                    ocr_response = ocr_client.ocr_image(
-                        image_data=image_block.image_data,
-                        page_num=page_num,
-                        bbox=image_block.bbox,
-                        prompt_type="ocr_simple",
-                        base_size=1280,
-                        image_size=1280
-                    )
+                    if image_block.bbox.area() / page_area < 0.08:
+                        continue
+                    try:
+                        ocr_response = ocr_client.ocr_image(
+                            image_data=image_block.image_data,
+                            page_num=page_num,
+                            bbox=image_block.bbox,
+                            prompt_type="ocr_simple",
+                            base_size=1280,
+                            image_size=1280
+                        )
+                    except RuntimeError as exc:
+                        print(f"⚠️ OCR image error (page {page_num}): {exc}")
+                        ocr_response = None
+                        ocr_graphics_active = False
                     if ocr_response:
                         structured = _format_ocr_structure(ocr_response.markdown)
                         if structured:
@@ -336,8 +357,10 @@ def extract_text_pdfplumber(pdf_path: str | Path,
                     render_dpi=300
                 )
                 for drawing_block in drawing_blocks:
-                    if drawing_block.bbox.area() / page_area < 0.03:
+                    if drawing_block.bbox.area() / page_area < 0.08:
                         continue
+                    if not ocr_graphics_active:
+                        break
                     image_bytes = native_extractor._render_region_to_image(
                         fitz_page,
                         drawing_block.bbox,
@@ -345,14 +368,19 @@ def extract_text_pdfplumber(pdf_path: str | Path,
                     )
                     if not image_bytes:
                         continue
-                    ocr_response = ocr_client.ocr_image(
-                        image_data=image_bytes,
-                        page_num=page_num,
-                        bbox=drawing_block.bbox,
-                        prompt_type="ocr_simple",
-                        base_size=1280,
-                        image_size=1280
-                    )
+                    try:
+                        ocr_response = ocr_client.ocr_image(
+                            image_data=image_bytes,
+                            page_num=page_num,
+                            bbox=drawing_block.bbox,
+                            prompt_type="ocr_simple",
+                            base_size=1280,
+                            image_size=1280
+                        )
+                    except RuntimeError as exc:
+                        print(f"⚠️ OCR drawing error (page {page_num}): {exc}")
+                        ocr_response = None
+                        ocr_graphics_active = False
                     if ocr_response:
                         structured = _format_ocr_structure(ocr_response.markdown)
                         if structured:

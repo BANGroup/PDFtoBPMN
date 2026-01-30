@@ -4,6 +4,7 @@
 """
 
 import json
+import re
 from pathlib import Path
 from typing import List, Dict, Set, Optional, TYPE_CHECKING
 
@@ -18,8 +19,9 @@ from .models import (
 )
 from .parser import (
     scan_documents_folder, get_process_info, normalize_process_code,
-    PROCESS_REGISTRY
+    normalize_document_code, PROCESS_REGISTRY
 )
+from .pdf_extractor import extract_references
 
 # Импорт гибридного парсера для извлечения структуры
 try:
@@ -63,6 +65,46 @@ class DocumentGraphBuilder:
         docs = scan_documents_folder(folder_path)
         self.documents.extend(docs)
         return len(docs)
+
+    def build_full_content_index(self, full_content_root: Path) -> Dict[str, Path]:
+        """Построить индекс doc_code -> full_content.md"""
+        index: Dict[str, Path] = {}
+        if not full_content_root.exists():
+            return index
+        for item in full_content_root.iterdir():
+            if not item.is_dir():
+                continue
+            parts = item.name.split('_', 1)
+            code = parts[1] if len(parts) == 2 and parts[0].isdigit() else item.name
+            full_md = item / "full_content.md"
+            if full_md.exists():
+                index[normalize_document_code(code)] = full_md
+        return index
+
+    def load_full_content_references(self, full_content_root: Path) -> int:
+        """Загрузить ссылки из full_content.md"""
+        index = self.build_full_content_index(full_content_root)
+        if not index:
+            return 0
+        total_refs = 0
+        for doc in self.documents:
+            doc_key = normalize_document_code(doc.code)
+            full_md = index.get(doc_key)
+            if not full_md:
+                continue
+            try:
+                text = full_md.read_text(encoding="utf-8")
+            except Exception:
+                continue
+            refs_raw = extract_references(text, doc.code)
+            normalized_refs = set()
+            for ref in refs_raw:
+                ref_norm = normalize_document_code(ref)
+                if ref_norm and ref_norm != doc_key:
+                    normalized_refs.add(ref_norm)
+            doc.references = sorted(normalized_refs)
+            total_refs += len(doc.references)
+        return total_refs
     
     def extract_metadata(self, max_pages: int = 50, 
                          docx_base_path: Path = None,
@@ -297,12 +339,12 @@ class DocumentGraphBuilder:
         }
         
         for group in self.process_groups:
+            label = group.value
             if group == ProcessGroup.UNKNOWN:
-                continue
-                
+                label = "Прочие"
             self.graph.add_node(GraphNode(
                 id=f"group_{group.name}",
-                label=group.value,
+                label=label,
                 node_type="process_group",
                 data={
                     "color": group_colors.get(group, "#95a5a6"),
@@ -389,15 +431,19 @@ class DocumentGraphBuilder:
         
         # Собираем пары (процесс, тип) для создания промежуточных узлов
         process_doctypes = set()
+        unknown_doctypes = set()
         for doc in self.documents:
             if doc.process_id:
                 normalized = normalize_process_code(doc.process_id)
                 process_doctypes.add((normalized, doc.doc_type))
+            else:
+                unknown_doctypes.add(doc.doc_type)
         
         # Создаём узлы типов документов для каждого процесса
         for process_code, doc_type in process_doctypes:
             type_node_id = f"type_{process_code}_{doc_type.name}"
             type_label = doc_type_labels.get(doc_type, doc_type.name)
+            group_code = process_code[0] if process_code else "UNKNOWN"
             
             self.graph.add_node(GraphNode(
                 id=type_node_id,
@@ -408,12 +454,34 @@ class DocumentGraphBuilder:
                     "doc_type": doc_type.value,
                     "doc_type_code": doc_type.name,
                     "color": doc_type_colors.get(doc_type, "#bdc3c7"),
+                    "group": normalize_process_code(group_code),
                 }
             ))
             
             # Связь типа с процессом
             self.graph.add_edge(GraphEdge(
                 source=f"process_{process_code}",
+                target=type_node_id,
+                edge_type="hierarchy"
+            ))
+
+        for doc_type in unknown_doctypes:
+            type_node_id = f"type_UNKNOWN_{doc_type.name}"
+            type_label = doc_type_labels.get(doc_type, doc_type.name)
+            self.graph.add_node(GraphNode(
+                id=type_node_id,
+                label=type_label,
+                node_type="doc_type",
+                data={
+                    "process_code": "",
+                    "doc_type": doc_type.value,
+                    "doc_type_code": doc_type.name,
+                    "color": doc_type_colors.get(doc_type, "#bdc3c7"),
+                    "group": ProcessGroup.UNKNOWN.name,
+                }
+            ))
+            self.graph.add_edge(GraphEdge(
+                source=f"group_{ProcessGroup.UNKNOWN.name}",
                 target=type_node_id,
                 edge_type="hierarchy"
             ))
@@ -424,7 +492,7 @@ class DocumentGraphBuilder:
         
         for doc in self.documents:
             doc_id = f"doc_{doc.code.replace('.', '_').replace('-', '_')}"
-            code_to_id[doc.code.upper()] = doc_id
+            code_to_id[normalize_document_code(doc.code)] = doc_id
             
             self.graph.add_node(GraphNode(
                 id=doc_id,
@@ -434,6 +502,7 @@ class DocumentGraphBuilder:
                     "doc_type": doc.doc_type.value,
                     "doc_type_code": doc.doc_type.name,
                     "process_code": doc.process_code,
+                    "group": doc.process_group.name,
                     "version": doc.version,
                     "file_path": doc.file_path,
                     "color": doc_type_colors.get(doc.doc_type, "#bdc3c7"),
@@ -455,6 +524,13 @@ class DocumentGraphBuilder:
                     target=doc_id,
                     edge_type="contains"
                 ))
+            else:
+                type_node_id = f"type_UNKNOWN_{doc.doc_type.name}"
+                self.graph.add_edge(GraphEdge(
+                    source=type_node_id,
+                    target=doc_id,
+                    edge_type="contains"
+                ))
         
         # 6. Добавляем связи между документами (ссылки)
         references_count = 0
@@ -462,12 +538,12 @@ class DocumentGraphBuilder:
             if not doc.references:
                 continue
             
-            source_id = code_to_id.get(doc.code.upper())
+            source_id = code_to_id.get(normalize_document_code(doc.code))
             if not source_id:
                 continue
             
             for ref_code in doc.references:
-                target_id = code_to_id.get(ref_code.upper())
+                target_id = code_to_id.get(normalize_document_code(ref_code))
                 if target_id and target_id != source_id:
                     self.graph.add_edge(GraphEdge(
                         source=source_id,
@@ -478,6 +554,9 @@ class DocumentGraphBuilder:
         
         if references_count > 0:
             print(f"   🔗 Найдено связей-ссылок: {references_count}")
+
+        self._prune_orphan_edges()
+        self._prune_orphan_documents()
         
         # 6. Метаданные
         self.graph.metadata = {
@@ -489,6 +568,76 @@ class DocumentGraphBuilder:
         }
         
         return self.graph
+
+    def _prune_orphan_edges(self) -> None:
+        """Удалить связи с отсутствующими узлами"""
+        node_ids = {node.id for node in self.graph.nodes}
+        before = len(self.graph.edges)
+        self.graph.edges = [
+            edge for edge in self.graph.edges
+            if edge.source in node_ids and edge.target in node_ids
+        ]
+        removed = before - len(self.graph.edges)
+        if removed:
+            print(f"   🧹 Удалены пустые связи: {removed}")
+
+    def _prune_orphan_documents(self) -> None:
+        """Удалить устаревшие документы без связей"""
+        def base_code(code: str) -> str:
+            match = re.match(r"^(.*?)-(\d+)$", code)
+            if match:
+                return match.group(1)
+            return code
+
+        # Считаем степень узлов
+        degree = defaultdict(int)
+        for edge in self.graph.edges:
+            degree[edge.source] += 1
+            degree[edge.target] += 1
+
+        # Определяем последние версии
+        latest_by_base: Dict[str, tuple] = {}
+        for doc in self.documents:
+            if not doc.version:
+                continue
+            try:
+                version_num = int(doc.version)
+            except ValueError:
+                continue
+            base = base_code(doc.code)
+            current = latest_by_base.get(base)
+            if not current or version_num > current[0]:
+                latest_by_base[base] = (version_num, doc.code)
+
+        removed = []
+        kept = []
+        for doc in self.documents:
+            doc_id = f"doc_{doc.code.replace('.', '_').replace('-', '_')}"
+            if degree.get(doc_id, 0) > 0:
+                continue
+            base = base_code(doc.code)
+            latest = latest_by_base.get(base)
+            if latest and latest[1] != doc.code:
+                removed.append(doc.code)
+            else:
+                kept.append(doc.code)
+
+        if not removed and not kept:
+            return
+
+        if removed:
+            before_nodes = len(self.graph.nodes)
+            self.graph.nodes = [n for n in self.graph.nodes if n.id not in {
+                f"doc_{code.replace('.', '_').replace('-', '_')}" for code in removed
+            }]
+            self.graph.edges = [e for e in self.graph.edges if e.source not in {
+                f"doc_{code.replace('.', '_').replace('-', '_')}" for code in removed
+            } and e.target not in {
+                f"doc_{code.replace('.', '_').replace('-', '_')}" for code in removed
+            }]
+            print(f"   🗑️ Удалены устаревшие без связей: {len(removed)} (узлов: {before_nodes} -> {len(self.graph.nodes)})")
+        if kept:
+            print(f"   ⚠️ Без связей (актуальные/без версии): {len(kept)}")
     
     def _calculate_statistics(self) -> Dict:
         """Рассчитать статистику по документам"""
@@ -1358,52 +1507,114 @@ def generate_html_viewer(graph_json: str, metadata: Dict) -> str:
                 case 'galaxy':
                     layoutConfig = {{
                         name: 'cose',
-                        idealEdgeLength: 100,
-                        nodeOverlap: 20,
+                        idealEdgeLength: 90,
+                        nodeOverlap: 5,
                         refresh: 20,
                         fit: true,
-                        padding: 30,
+                        padding: 40,
                         randomize: false,
-                        componentSpacing: 100,
-                        nodeRepulsion: 400000,
-                        edgeElasticity: 100,
+                        componentSpacing: 80,
+                        nodeRepulsion: 200000,
+                        edgeElasticity: 120,
                         nestingFactor: 5,
-                        gravity: 80,
-                        numIter: 1000,
-                        initialTemp: 200,
+                        gravity: 40,
+                        numIter: 1200,
+                        initialTemp: 180,
                         coolingFactor: 0.95,
                         minTemp: 1.0
                     }};
                     break;
                     
                 case 'circle':
+                    applySectorCircleLayout(cy);
                     layoutConfig = {{
-                        name: 'concentric',
+                        name: 'preset',
                         fit: true,
-                        padding: 30,
-                        startAngle: 3/2 * Math.PI,
-                        sweep: undefined,
-                        clockwise: true,
-                        equidistant: false,
-                        minNodeSpacing: 50,
-                        avoidOverlap: true,
-                        nodeDimensionsIncludeLabels: true,
-                        concentric: function(node) {{
-                            // СМК в центре, группы ближе, документы дальше
-                            const type = node.data('type');
-                            if (type === 'root') return 100;
-                            if (type === 'process_group') return 80;
-                            if (type === 'process') return 60;
-                            return 10;
-                        }},
-                        levelWidth: function(nodes) {{
-                            return 2;
-                        }}
+                        padding: 10,
+                        animate: true,
+                        animationDuration: 500
                     }};
                     break;
             }}
             
             cy.layout(layoutConfig).run();
+        }}
+
+        function applySectorCircleLayout(cy) {{
+            const center = {{
+                x: cy.width() / 2,
+                y: cy.height() / 2
+            }};
+            const sectorByGroup = {{
+                'M': {{ start: -Math.PI / 2, end: Math.PI / 6 }},
+                'B': {{ start: Math.PI / 6, end: Math.PI * 5 / 6 }},
+                'V': {{ start: Math.PI * 5 / 6, end: Math.PI * 3 / 2 }},
+                'UNKNOWN': {{ start: Math.PI * 3 / 2, end: Math.PI * 11 / 6 }}
+            }};
+            const ringRadius = {{
+                root: 0,
+                process_group: 160,
+                process: 160,
+                doc_type: 160,
+                document: 260
+            }};
+            const ringStep = 35;
+            const minSpacing = 30;
+
+            const nodesByGroupType = {{
+                'M': {{ process_group: [], process: [], doc_type: [], document: [] }},
+                'B': {{ process_group: [], process: [], doc_type: [], document: [] }},
+                'V': {{ process_group: [], process: [], doc_type: [], document: [] }},
+                'UNKNOWN': {{ process_group: [], process: [], doc_type: [], document: [] }}
+            }};
+
+            cy.nodes().forEach(node => {{
+                const type = node.data('type');
+                if (type === 'root') {{
+                    node.position(center);
+                    return;
+                }}
+                if (type === 'process_group') {{
+                    const groupCode = node.data('group_code') || 'UNKNOWN';
+                    if (!nodesByGroupType[groupCode]) nodesByGroupType[groupCode] = {{ process_group: [], process: [], doc_type: [], document: [] }};
+                    nodesByGroupType[groupCode].process_group.push(node);
+                    return;
+                }}
+                let group = node.data('group') || 'UNKNOWN';
+                if (typeof group === 'string') {{
+                    if (group.toUpperCase() === 'M') group = 'M';
+                    if (group.toUpperCase() === 'B') group = 'B';
+                    if (group.toUpperCase() === 'V') group = 'V';
+                    if (group.toUpperCase() === 'UNKNOWN') group = 'UNKNOWN';
+                }}
+                if (!nodesByGroupType[group]) nodesByGroupType[group] = {{ process_group: [], process: [], doc_type: [], document: [] }};
+                if (type === 'process') nodesByGroupType[group].process.push(node);
+                if (type === 'doc_type') nodesByGroupType[group].doc_type.push(node);
+                if (type === 'document') nodesByGroupType[group].document.push(node);
+            }});
+
+            Object.keys(nodesByGroupType).forEach(groupCode => {{
+                const sector = sectorByGroup[groupCode] || {{ start: -Math.PI, end: Math.PI }};
+                const angleSpan = sector.end - sector.start;
+
+                ['process_group', 'process', 'doc_type', 'document'].forEach(type => {{
+                    const nodes = nodesByGroupType[groupCode][type];
+                    if (!nodes.length) return;
+                    let baseRadius = ringRadius[type] || 200;
+                    const maxPerRing = Math.max(1, Math.floor((angleSpan * baseRadius) / minSpacing));
+                    nodes.forEach((node, idx) => {{
+                        const ringIndex = Math.floor(idx / maxPerRing);
+                        const positionInRing = idx % maxPerRing;
+                        const countInRing = Math.min(maxPerRing, nodes.length - ringIndex * maxPerRing);
+                        const radius = baseRadius + ringIndex * ringStep;
+                        const angle = sector.start + angleSpan * (positionInRing + 0.5) / countInRing;
+                        node.position({{
+                            x: center.x + radius * Math.cos(angle),
+                            y: center.y + radius * Math.sin(angle)
+                        }});
+                    }});
+                }});
+            }});
         }}
     </script>
 </body>

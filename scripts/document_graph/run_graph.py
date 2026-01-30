@@ -25,6 +25,9 @@ def main():
     parser.add_argument('--input', '-i', 
                        default='input2/BND/pdf',
                        help='Папка с документами (default: input2/BND/pdf)')
+    parser.add_argument('--full-content',
+                       default='output3/full_run_latest',
+                       help='Папка с full_content.md (default: output3/full_run_latest)')
     parser.add_argument('--output', '-o',
                        default='output/document_graph', 
                        help='Папка для результатов (default: output/document_graph)')
@@ -32,17 +35,22 @@ def main():
     args = parser.parse_args()
     
     input_path = PROJECT_ROOT / args.input
+    full_content_path = PROJECT_ROOT / args.full_content
     output_path = PROJECT_ROOT / args.output
     
     print("=" * 60)
     print("📊 ПОСТРОЕНИЕ ГРАФА ДОКУМЕНТОВ СМК")
     print("=" * 60)
     print(f"\n📁 Источник: {input_path}")
+    print(f"📄 Full content: {full_content_path}")
     print(f"📂 Результат: {output_path}")
     print()
     
     if not input_path.exists():
         print(f"❌ Папка не найдена: {input_path}")
+        return 1
+    if not full_content_path.exists():
+        print(f"❌ Папка full_content не найдена: {full_content_path}")
         return 1
     
     # Строим граф
@@ -77,6 +85,10 @@ def main():
         xlsx_catalog_path=xlsx_catalog
     )
     print(f"   Обработано: {extracted} документов")
+    
+    print("\n🔗 Загрузка ссылок из full_content...")
+    refs_loaded = builder.load_full_content_references(full_content_path)
+    print(f"   Найдено ссылок: {refs_loaded}")
     
     print("\n🔨 Построение графа...")
     graph = builder.build_graph()

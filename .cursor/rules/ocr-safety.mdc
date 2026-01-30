@@ -1,0 +1,10 @@
+---
+description: Безопасный запуск DeepSeek OCR (только с flash-attn)
+alwaysApply: true
+---
+
+# DeepSeek OCR: запрет запуска без flash-attn
+
+- Запрещено запускать DeepSeek OCR без `flash-attn` на GPU 16GB.
+- Перед любым OCR-запуском подтверждать, что `flash-attn` активен; если нет — не запускать.
+- Не запускать параллельно несколько OCR-процессов.
