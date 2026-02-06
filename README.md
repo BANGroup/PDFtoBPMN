@@ -482,6 +482,8 @@ PDFtoBPMN/
 │   │   └── check_ocr_health.py      # Проверка OCR сервиса
 │   └── tools/               # 🛠️ Standalone-инструменты (→ Nextcloud)
 │       ├── bpmn_viewer.html         # Web-просмотрщик BPMN с трассировкой
+│       ├── graph_viewer.html        # Интерактивный граф документов СМК
+│       ├── graph_data.json          # Данные графа документов
 │       └── example_usage.py         # Пример использования пайплайна
 │
 ├── docs/

@@ -5,7 +5,7 @@
 Использование (из корня проекта):
     python scripts/document_graph/run_graph.py
     python scripts/document_graph/run_graph.py --input input2/BND/pdf
-    python scripts/document_graph/run_graph.py --output output/my_graph
+    python scripts/document_graph/run_graph.py --output scripts/tools
 """
 
 import sys
@@ -29,8 +29,8 @@ def main():
                        default='output3/full_run_latest',
                        help='Папка с full_content.md (default: output3/full_run_latest)')
     parser.add_argument('--output', '-o',
-                       default='output/document_graph', 
-                       help='Папка для результатов (default: output/document_graph)')
+                       default='scripts/tools', 
+                       help='Папка для результатов (default: scripts/tools)')
     
     args = parser.parse_args()
     

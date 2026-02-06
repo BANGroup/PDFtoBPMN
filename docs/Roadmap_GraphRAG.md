@@ -560,8 +560,8 @@ python3 scripts/document_graph/run_graph.py --input input2/BND/pdf --output outp
 - [x] `scripts/document_graph/run_graph.py` — скрипт запуска
 
 **Выходные файлы:**
-- [x] `output/document_graph/graph_data.json` — данные графа (176KB)
-- [x] `output/document_graph/graph_viewer.html` — интерактивный визуализатор (195KB)
+- [x] `scripts/tools/graph_data.json` — данные графа (176KB)
+- [x] `scripts/tools/graph_viewer.html` — интерактивный визуализатор (195KB)
 
 **HTML Визуализатор (публичный интерфейс):**
 - Cytoscape.js для рендеринга графа
@@ -574,7 +574,7 @@ python3 scripts/document_graph/run_graph.py --input input2/BND/pdf --output outp
 
 ```
 🌐 Откройте в браузере:
-   file:///home/budnik_an/Obligations/output/document_graph/graph_viewer.html
+   file:///home/budnik_an/Obligations/scripts/tools/graph_viewer.html
 ```
 
 ---

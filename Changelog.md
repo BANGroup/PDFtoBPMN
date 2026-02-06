@@ -19,8 +19,11 @@
 - Оформление XLSX: автофильтр, закреплённый заголовок, чередование строк, сортировка по алфавиту (RU)
 
 ### Изменено
-- Создана папка `scripts/tools/` для standalone-инструментов (`bpmn_viewer.html`, `example_usage.py`)
-- Папка `scripts/tools/` вынесена на Nextcloud (`Nextcloud/Projects/tools/obligations/`) через симлинк
+- Создана папка `scripts/tools/` для standalone-инструментов (симлинк → Nextcloud)
+- Перенесены в `scripts/tools/`: `bpmn_viewer.html`, `example_usage.py`, `graph_viewer.html`, `graph_data.json`
+- Удалена `output/document_graph/` — содержимое перенесено в `scripts/tools/`
+- Обновлён дефолтный `--output` в `scripts/document_graph/run_graph.py` → `scripts/tools`
+- Обновлены пути в `docs/Roadmap_GraphRAG.md`, `Changelog.md`, `README.md`
 
 ## [30-01-2026] - Черновые RACI матрицы для full_run_latest
 
@@ -106,7 +109,7 @@
 **Использование:**
 ```bash
 python3 scripts/document_graph/run_graph.py
-# Результат: output/document_graph/graph_viewer.html
+# Результат: scripts/tools/graph_viewer.html
 ```
 
 ### Изменено
