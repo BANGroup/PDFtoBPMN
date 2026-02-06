@@ -4799,7 +4799,7 @@ FILE="output/ДП-М1.020-06/ДП-М1.020-06.bpmn"
 ## BPMN Viewer с трассировкой
 
 ### Расположение
-- **Основная версия:** `scripts/bpmn_viewer.html`
+- **Основная версия:** `scripts/tools/bpmn_viewer.html`
 - **Рабочая копия:** `output/Integrated_Pipeline/bpmn_viewer.html`
 
 ### Функционал

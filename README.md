@@ -474,11 +474,15 @@ PDFtoBPMN/
 │   │   ├── extractors/      # Текст, таблицы, графика
 │   │   ├── ir/              # Промежуточное представление
 │   │   └── ocr_service/     # DeepSeek-OCR интеграция
-│   └── utils/               # 🛠️ CLI утилиты и тесты
-│       ├── run_ocr.py               # Обработка PDF с OCR
-│       ├── check_ocr_health.py      # Проверка OCR сервиса
-│       ├── test_deepseek_ocr.py     # Тест DeepSeek-OCR
-│       └── test_paddle_isolated.py  # Тест PaddleOCR (CPU)
+│   ├── utils/               # 🛠️ CLI утилиты и тесты
+│   │   ├── run_document.py          # Универсальный обработчик (PDF/DOCX/XLSX)
+│   │   ├── extract_definitions.py   # 🆕 Извлечение определений и сокращений из БНД
+│   │   ├── generate_docx.py         # Генерация DOCX копий
+│   │   ├── check_environment.py     # Проверка окружения
+│   │   └── check_ocr_health.py      # Проверка OCR сервиса
+│   └── tools/               # 🛠️ Standalone-инструменты (→ Nextcloud)
+│       ├── bpmn_viewer.html         # Web-просмотрщик BPMN с трассировкой
+│       └── example_usage.py         # Пример использования пайплайна
 │
 ├── docs/
 │   ├── Architecture.md             # Техническая архитектура
@@ -572,7 +576,7 @@ PDFtoBPMN/
 ```
 
 **Расположение:**
-- `scripts/bpmn_viewer.html` — основная версия
+- `scripts/tools/bpmn_viewer.html` — основная версия (синхронизируется через Nextcloud)
 - `output/Integrated_Pipeline/bpmn_viewer.html` — рабочая копия
 
 ### Горячие клавиши
@@ -646,7 +650,7 @@ python3 scripts/utils/generate_docx.py output/ДП-М1.020-06 ДП-М1.020-06
 
 ### 3️⃣ `bpmn_viewer` - Универсальный web-просмотрщик BPMN
 
-**Расположение:** `scripts/bpmn_viewer.html`
+**Расположение:** `scripts/tools/bpmn_viewer.html`
 
 **Возможности:**
 - 📂 **Открытие** .bpmn/.xml файлов (кнопка или Drag & Drop)
@@ -660,7 +664,7 @@ python3 scripts/utils/generate_docx.py output/ДП-М1.020-06 ДП-М1.020-06
 **Использование на ПК:**
 ```bash
 # Просто открыть в браузере:
-file:///path/to/scripts/bpmn_viewer.html
+file:///path/to/scripts/tools/bpmn_viewer.html
 # Перетащить .bpmn файл на страницу или нажать "Открыть"
 ```
 
