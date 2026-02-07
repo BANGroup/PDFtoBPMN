@@ -108,7 +108,7 @@ class NativeExtractor:
         Используется для исключения OCR по колонтитулам (header/footer).
         """
         header_ratio = 0.08
-        footer_ratio = 0.08
+        footer_ratio = 0.05  # Снижено с 0.08 до 0.05 для уменьшения ложных пропусков текста
         max_band_height_ratio = 0.12
         
         bbox_height = bbox.y1 - bbox.y0

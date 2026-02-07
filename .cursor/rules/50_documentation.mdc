@@ -1,0 +1,63 @@
+---
+description: Documentation rules - file linking, process documentation structure
+globs:
+  - "output/**/*.md"
+  - "output2/**/*.md"
+  - "docs/**"
+alwaysApply: false
+---
+
+# Работа с документацией
+
+## Правила связи файлов процесса
+
+**Для каждого процесса создается 9 связанных файлов:**
+
+| N | Файл | Назначение |
+|---|------|------------|
+| 1 | `[Имя]_OCR.md` | Расшифровка документа |
+| 2 | `[Имя]_OCR.pdf` | PDF копия расшифровки |
+| 3 | `[Имя]_RACI.md` | Матрица ответственности |
+| 4 | `[Имя]_RACI.pdf` | PDF копия RACI |
+| 5 | `[Имя]_Pipeline.md` | Текстовый пайплайн |
+| 6 | `[Имя]_Pipeline.pdf` | PDF копия пайплайна |
+| 7 | `[Имя].bpmn` | BPMN диаграмма (XML) |
+| 8 | `[Имя].md` | Документация процесса |
+| 9 | `[Имя].pdf` | PDF копия документации |
+
+**Правила:**
+- Все файлы имеют одинаковое базовое имя `[Имя]`
+- Названия элементов в `.md` ТОЧНО соответствуют атрибуту `name` в `.bpmn`
+- Каждому элементу в BPMN соответствует строка в таблице MD
+- Базовое имя формируется автоматически из имени входного файла
+
+## Документирование расширенных элементов BPMN
+
+При использовании элементов, не описанных в основном списке:
+
+1. **В отчете (чат):** название, XML тег, зачем используется
+2. **В MD документации:** отдельная таблица для новых типов
+3. **В Changelog:** зафиксировать использование
+
+## Поддерживаемые элементы BPMN 2.0
+
+### Часто (80%):
+- Manual Task, Service Task, User Task
+- Exclusive Gateway, Parallel Gateway
+- None/Message Start/End Events
+- Sequence Flow, Message Flow
+- Pool, Lane
+
+### Средне (15%):
+- Subprocess, Call Activity
+- Timer/Conditional Events
+- Inclusive/Event-Based Gateway
+- Data Objects, Text Annotations
+
+### Редко (5%):
+- Transaction, Ad-Hoc Subprocess
+- Signal/Escalation Events
+- Complex Gateway
+- Script/Business Rule Tasks
+
+**Полное описание:** `docs/BPMN_Elements_Reference.md`

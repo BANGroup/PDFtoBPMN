@@ -1,0 +1,176 @@
+---
+description: Environment requirements (platforms, GPU, venv, dependencies)
+globs:
+  - "**/*"
+alwaysApply: true
+---
+
+# Требования к окружению и платформам
+
+## Поддерживаемые платформы
+
+### Linux (основная платформа)
+- **Статус:** Полная поддержка
+- **Тестирование:** Ubuntu 20.04+, Debian, Arch
+- **Рекомендация:** Основная платформа для разработки и production
+
+### Windows (частичная поддержка)
+- **Статус:** Работает с настройкой
+- **Известные проблемы:** кодировки (CP1251/CP866), venv (другие команды активации), CRLF vs LF, GPU/CUDA
+- **Рекомендация:** Использовать WSL2
+
+### macOS (не тестировалось)
+- **Статус:** Теоретически работает (Unix-подобная)
+- **Рекомендация:** Протестировать при первом использовании
+
+## Проверка окружения
+
+**ОБЯЗАТЕЛЬНО запускать перед началом работы:**
+
+```bash
+python3 scripts/utils/check_environment.py
+```
+
+**Что проверяется:**
+- Операционная система (Linux/Windows/macOS)
+- Версия Python (>=3.9)
+- Кодировка системы (UTF-8)
+- Обязательные зависимости (PyMuPDF, python-docx, openpyxl, requests, Pillow)
+- Права на запись (output/, archive/)
+- Виртуальное окружение (рекомендуется)
+- Опциональные компоненты (pandoc, GPU/CUDA)
+
+**Флаги:**
+- `--strict` — строгий режим (warnings = errors, для CI/CD)
+
+## Минимальные требования
+
+### Обязательно:
+- **Python:** >=3.9 (python-docx 1.2.0+ требует минимум 3.9)
+- **ОС:** Linux (рекомендуется) или Windows с UTF-8 или macOS
+- **Кодировка:** UTF-8 (критично для русских текстов)
+- **Зависимости:** PyMuPDF, python-docx, openpyxl, requests, Pillow
+- **Права:** запись в output/ и archive/
+
+### Рекомендуется:
+- **Виртуальное окружение:** venv (для изоляции зависимостей)
+- **GPU/CUDA:** для OCR графики (опционально, можно без)
+- **Pandoc:** для генерации DOCX из MD (опционально)
+
+## Управление ресурсами GPU (КРИТИЧЕСКИ ВАЖНО!)
+
+**ПРАВИЛО:** Перед запуском тяжелых операций (Docker build, загрузка модели) ОБЯЗАТЕЛЬНО:
+
+### 1. Проверить текущую загрузку GPU:
+```bash
+nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu --format=csv,noheader
+```
+
+### 2. Остановить ненужные процессы:
+```bash
+pkill -f "uvicorn scripts.pdf_to_context.ocr_service.app"
+pkill -f deepseek
+pkill -f qwen
+```
+
+### 3. Очистить VRAM:
+```bash
+python3 -c "import torch; torch.cuda.empty_cache(); print('VRAM очищен')"
+```
+
+### 4. Лимиты ресурсов:
+
+| Операция | Минимум VRAM | Рекомендация |
+|----------|--------------|--------------|
+| Docker build | 2GB | Остановить все GPU процессы |
+| DeepSeek-OCR (3B) | 8GB | Не запускать с Qwen |
+| Qwen2-VL-2B | 4GB | Можно параллельно с малыми моделями |
+| Qwen2-VL-7B | 14GB | Только отдельно |
+| Компиляция flash_attn | 4GB + CPU | Только отдельно, 10-30 мин |
+
+### 5. При зависании системы:
+- **Причина:** Обычно OOM при одновременной работе нескольких моделей
+- **Решение:** Перед тяжелыми задачами ВСЕГДА останавливать GPU-процессы
+- **Профилактика:** Проверять `nvidia-smi` перед каждой операцией
+
+## Особенности платформ
+
+### Linux
+```bash
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Windows
+```powershell
+# PowerShell
+venv\Scripts\Activate.ps1
+
+# Настройка UTF-8 (обязательно!)
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+chcp 65001
+
+# Установка зависимостей
+python -m pip install -r requirements.txt
+
+# Альтернатива (рекомендуется): WSL2
+wsl --install -d Ubuntu
+```
+
+### macOS
+```bash
+source venv/bin/activate
+# Проверка UTF-8:
+locale  # Должно быть LANG=en_US.UTF-8
+pip3 install -r requirements.txt
+```
+
+## Правила для AI-ассистента по кросс-платформенности
+
+### При работе с путями:
+- **Всегда использовать `Path()`** из pathlib (кросс-платформенно)
+- **Не использовать** жестко зашитые `/` или `\`
+- Пример: `Path("output") / base_name / f"{base_name}_OCR.md"`
+
+### При работе с файлами:
+- **Всегда указывать `encoding='utf-8'`** при открытии текстовых файлов
+- Пример: `open('file.txt', 'r', encoding='utf-8')`
+- Для `Path()`: `path.read_text(encoding='utf-8')`
+
+### При работе с переносами строк:
+- **Всегда указывать `newline='\n'`** при записи MD файлов
+- Пример: `open('file.md', 'w', encoding='utf-8', newline='\n')`
+
+### При работе с командами:
+- **Проверять ОС** перед специфичными командами
+- Пример: `platform.system()` -> 'Linux' / 'Windows' / 'Darwin'
+- Предлагать альтернативы для разных ОС в документации
+
+### При создании скриптов:
+- Запускать `check_environment.py` в начале (или интегрировать проверку)
+- Выдавать понятные ошибки для Windows (UTF-8, пути, venv)
+- Использовать `subprocess` вместо `os.system` (более безопасно и кросс-платформенно)
+
+## Проверка виртуального окружения
+
+**КРИТИЧЕСКИ ВАЖНО перед запуском любых Python скриптов:**
+
+```bash
+# Проверить активировано ли виртуальное окружение
+which python3  # Должен показать путь в venv/
+
+# Как найти правильное окружение:
+find . -type d -name "venv" 2>/dev/null
+
+# Активация:
+source venv/bin/activate  # или DeepSeek-OCR/venv/bin/activate
+
+# Проверка:
+pip list | grep -E "flash|torch"
+```
+
+**Частые ошибки без активированного окружения:**
+- `ModuleNotFoundError: No module named 'fitz'`
+- `ModuleNotFoundError: No module named 'PIL'`
+- `ModuleNotFoundError: No module named 'docx'`
+- `ModuleNotFoundError: No module named 'openpyxl'`

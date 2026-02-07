@@ -1,0 +1,275 @@
+---
+description: BPMN technical specifications (XML structure, SubProcess, rules compendium, iterative workflow)
+globs:
+  - "output/**/*.bpmn"
+  - "scripts/utils/check_bpmn*"
+alwaysApply: false
+---
+
+# Технические спецификации BPMN
+
+## Источники стандартов
+- **OMG BPMN 2.0.2 Specification**
+- **Полный справочник:** `docs/BPMN_Elements_Reference.md`
+
+## Типы задач и приоритеты
+
+**Алгоритм выбора:**
+1. Есть участие человека? НЕТ -> Service Task, ДА -> шаг 2
+2. Работа через ИС? НЕТ -> Manual Task, ДА -> User Task
+3. Сомневаешься? -> Manual Task
+
+| Тип | XML тег | Иконка | Использование |
+|-----|---------|--------|---------------|
+| Manual Task | `<bpmn:manualTask>` | Кисть | Ручная работа БЕЗ ИС (приоритет) |
+| Service Task | `<bpmn:serviceTask>` | Шестеренка | Автоматическая операция |
+| User Task | `<bpmn:userTask>` | Человечек | Работа через интерфейс BPM-системы |
+
+## Итеративный подход к созданию BPMN
+
+### Этап 1: Базовая структура (write)
+- Корректная XML структура, namespace
+- Один Pool, одна Lane, Start/End Events
+
+### Этап 2: Lanes и задачи (search_replace)
+- Все lanes из RACI
+- Все задачи из Pipeline
+- Sequence Flows между задачами
+- БЕЗ визуализации
+
+### Этап 3: SubProcess (search_replace)
+- Группы задач -> SubProcess
+- laneSet и lanes ВНУТРИ каждого SubProcess
+- Минимум 1 lane обязательно
+
+### Этап 4: Визуализация главной диаграммы
+- BPMNShape для Participant, Lanes, Tasks, Events, Gateways
+- BPMNEdge для Sequence Flows
+- SubProcess: `isExpanded="false"` (свёрнутый)
+
+### Этап 5: Визуализация SubProcess
+- Отдельный `<bpmndi:BPMNDiagram>` для КАЖДОГО SubProcess
+- BPMNShape для lanes, элементов
+- BPMNEdge для потоков
+
+### Этап 6: Валидация и исправления
+- Подсчет элементов (grep -c)
+- Поиск дубликатов
+- Проверка в Camunda Modeler
+
+## Структура BPMN XML
+
+### Обязательная структура
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  id="Definitions_1"
+  targetNamespace="http://bpmn.io/schema/bpmn">
+
+  <bpmn:collaboration id="Collaboration_1">
+    <bpmn:participant id="Participant_1" name="Процесс" processRef="Process_1" />
+  </bpmn:collaboration>
+
+  <bpmn:process id="Process_1" isExecutable="true">
+    <bpmn:laneSet id="LaneSet_1">
+      <bpmn:lane id="Lane_1" name="Роль 1">
+        <bpmn:flowNodeRef>StartEvent_1</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <!-- elements -->
+  </bpmn:process>
+
+  <!-- ОБЯЗАТЕЛЬНАЯ СЕКЦИЯ ВИЗУАЛИЗАЦИИ -->
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_1">
+      <!-- shapes and edges -->
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+```
+
+---
+
+# Единый свод правил построения BPMN
+
+## УРОВЕНЬ 1: КРИТИЧЕСКИЕ (нарушение -> BPMN не работает)
+
+### 1. БЕЗ `bpmndi:BPMNDiagram` файл НЕ ОТКРОЕТСЯ в Camunda
+
+### 2. Каждый элемент ОБЯЗАН иметь BPMNShape/BPMNEdge
+Без BPMNShape элемент НЕ БУДЕТ ВИДЕН.
+
+### 3. НЕ дублировать закрывающие теги XML
+
+### 4. Все `flowNodeRef` ДОЛЖНЫ указывать на существующие элементы
+Иначе: warning "Unresolved reference".
+
+### 5. `sourceRef`/`targetRef` ДОЛЖНЫ указывать на существующие элементы
+
+### 6. Каждый SubProcess ОБЯЗАН иметь минимум 1 lane
+
+```xml
+<bpmn:subProcess id="SubProcess_1">
+  <bpmn:laneSet id="LaneSet_SP1">
+    <bpmn:lane id="Lane_SP1_Role1" name="Роль 1">
+      <bpmn:flowNodeRef>Task_1_1</bpmn:flowNodeRef>
+    </bpmn:lane>
+  </bpmn:laneSet>
+  <bpmn:task id="Task_1_1" />
+</bpmn:subProcess>
+```
+
+### 7. Для drill-down: отдельный `BPMNDiagram` для SubProcess
+
+```xml
+<!-- Главная диаграмма: SubProcess свёрнутый -->
+<bpmndi:BPMNShape id="SubProcess_1_di" bpmnElement="SubProcess_1" isExpanded="false">
+  <dc:Bounds x="300" y="100" width="140" height="80" />
+</bpmndi:BPMNShape>
+
+<!-- ОТДЕЛЬНАЯ диаграмма для drill-down -->
+<bpmndi:BPMNDiagram id="BPMNDiagram_SubProcess_1">
+  <bpmndi:BPMNPlane bpmnElement="SubProcess_1">
+    <bpmndi:BPMNShape id="Lane_SP1_Role1_di" bpmnElement="Lane_SP1_Role1" isHorizontal="true">
+      <dc:Bounds x="30" y="80" width="2000" height="200" />
+    </bpmndi:BPMNShape>
+  </bpmndi:BPMNPlane>
+</bpmndi:BPMNDiagram>
+```
+
+### 8. Lanes ОБЯЗАНЫ иметь `isHorizontal="true"`
+
+### 9. Координаты задач ДОЛЖНЫ быть внутри границ lane
+Y-координата задачи в диапазоне [lane.y, lane.y + lane.height].
+
+### 10. Все namespace ОБЯЗАНЫ быть объявлены в `<bpmn:definitions>`
+Минимум 5: bpmn, bpmndi, dc, di, xsi.
+
+### 11. `id` элементов ОБЯЗАНЫ быть уникальными
+
+---
+
+## УРОВЕНЬ 2: ВАЖНЫЕ (нарушение -> некорректное отображение)
+
+### Стандартные размеры элементов
+
+| Элемент | Width | Height |
+|---------|-------|--------|
+| Task | 100 | 80 |
+| Gateway | 50 | 50 |
+| Start/End Event | 36 | 36 |
+| Pool | 3600+ | 1200+ |
+| Lane | 3570 | 200 |
+
+### Расстояния
+- Горизонтальное между элементами: 160-200px
+- Высота lane: 200px
+- Начальное смещение в Pool: x=190
+
+### SubProcess в главной диаграмме: `isExpanded="false"`
+
+### Правильная прокладка линий (Waypoints Routing)
+
+**Правила:**
+1. Линии НЕ проходят сквозь блоки activities
+2. Разные точки подключения к Gateway (углы ромба)
+
+**Анатомия Gateway (ромб 50x50):**
+- Верх: (x_center, y_center - 25)
+- Низ: (x_center, y_center + 25)
+- Лево: (x_center - 25, y_center)
+- Право: (x_center + 25, y_center)
+
+**Подключение:**
+- Входящие -> левая точка
+- Исходящие -> правая точка
+- Несколько исходящих -> верх/низ/право для разделения
+
+**Обход блока:** добавить промежуточные waypoints для обхода сверху/снизу.
+
+### Соответствие документу
+- Lanes == ролей в RACI
+- Tasks ~ activities в Pipeline (+-10%)
+- Параллельность -> Parallel Gateway
+- Условия -> Exclusive Gateway
+- Циклы -> обратные flows
+- Вариативность -> Gateway с N ветвями
+- Data Objects -> источник и потребитель
+
+---
+
+## УРОВЕНЬ 3: РЕКОМЕНДУЕМЫЕ (best practices)
+
+### Оформление
+- `<bpmn:documentation>` для трассировки (1-3 предложения)
+- Именование событий: "Объект + причастие" (Заявка получена)
+- Именование задач: "Глагол + объект" (Подготовить документ)
+- Именование Gateway: "Вопрос?" (Бюджет согласован?)
+
+### Структура
+- Lanes: 1-5 (оптимально 3-5, максимум 7)
+- Tasks: 3-15 (максимум 20)
+- Направление: слева направо
+- Избегать пересечений sequence flows
+
+### Работа с файлами
+- Резервные копии в archive/ перед изменениями
+- НЕ удалять файлы из input/
+- НЕ игнорировать warnings из Camunda
+
+---
+
+## Автоматические скрипты проверки
+
+### Быстрая проверка перед Camunda:
+```bash
+bash scripts/utils/quick_check_bpmn.sh output/[Процесс]/[Процесс].bpmn
+```
+
+### Комплексная проверка:
+```bash
+bash scripts/utils/check_bpmn.sh output/[Процесс]/[Процесс].bpmn
+```
+
+### Проверка RACI vs BPMN:
+```bash
+bash scripts/utils/check_raci_bpmn.sh output/[Процесс]
+```
+
+**Порядок:**
+1. check_raci_bpmn.sh — после RACI, перед BPMN
+2. check_bpmn.sh — после структуры Level 4
+3. quick_check_bpmn.sh — перед каждым открытием Camunda
+4. Camunda Modeler — финальная визуальная проверка
+
+---
+
+## Правила итеративной работы
+
+**МОЖНО И НУЖНО:**
+- Работать этапами (сначала структура, потом детали)
+- Проверять после каждого этапа
+- Исправлять ошибки по мере обнаружения
+- Добавлять элементы группами
+- Использовать grep для проверки
+- Валидировать в Camunda после крупных изменений
+
+**НЕ ДЕЛАТЬ:**
+- Создавать весь BPMN за один вызов write
+- Добавлять визуализацию одновременно с логикой
+- Использовать короткие фрагменты в search_replace
+- Забывать lanes в SubProcess
+- Пропускать валидацию между этапами
+
+### Контекст в search_replace
+**ВСЕГДА использовать достаточный контекст (минимум 5-10 строк ДО и ПОСЛЕ)** для уникальной идентификации фрагмента.
+
+### Навигация в SubProcess (Camunda Modeler)
+- Синяя стрелка + двойной клик -> drill-down
+- Это UI-решение Camunda, в XML нет кода для стрелки
+- XML содержит: `<bpmn:subProcess>`, `<bpmndi:BPMNShape isExpanded="false">`, отдельный BPMNDiagram

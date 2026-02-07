@@ -6,6 +6,74 @@
 
 ---
 
+## [06-02-2026] - DiagramElementDetector: YOLO12 для элементов схем
+
+### Добавлено
+- `DiagramElementDetector` в `layout_detector.py` — детектор элементов диаграмм на базе YOLO12 (attention-centric)
+- `DiagramCategory` enum — 24 категории элементов (task, gateway, event, flow, pool, lane и др.)
+- `DiagramElement` dataclass — обнаруженный элемент с bbox, confidence, text
+- Методы: `detect()`, `detect_and_merge_ocr()`, `build_connections()`, `to_structured_json()`, `to_markdown()`
+- JSON-вывод для GraphRAG: структурированное представление диаграмм (elements + connections)
+- `train_diagram_detector.py` — скрипт fine-tuning YOLO12 на flowchart/BPMN датасетах
+- Поддержка конвертации COCO -> YOLO формат (для hdBPMN датасета)
+- Интеграция в `pdfplumber_extractor.py`: YOLO12 -> OCR -> merge -> JSON + Markdown (с fallback)
+- `get_diagram_detector()` в `extractors/__init__.py`
+- `ultralytics>=8.3.0` в requirements.txt (опционально, закомментирован)
+
+---
+
+## [06-02-2026] - Исправление ошибок обработки БНД (410 документов)
+
+### Добавлено
+- Интерливинг таблиц и текста по Y-координатам: таблицы теперь вставляются на правильное место в документе (а не в конец страницы)
+- Валидация таблиц: отсев ложных таблиц (min 2 строки, min 2 колонки, проверка распределения контента)
+- Forward fill для merged cells: заполнение пустых ячеек объединённых таблиц значением сверху
+- Интеграция LayoutDetector (DocLayout-YOLO) в batch-обработку: надежная фильтрация колонтитулных изображений по YOLO-категориям
+- Снижение порога фильтрации изображений с 8% до 2% (с LayoutDetector) — мелкие рисунки больше не пропускаются
+- Placeholder для нераспознанных рисунков/схем: `[Рисунок N, стр. X]` вместо полного пропуска
+- Извлечение версии документа (ИЗДАНИЕ/РЕВИЗИЯ) с титульной страницы через OCR
+
+### Изменено
+- `pdfplumber_extractor.py`: table_settings переведен на `lines`-стратегию (вместо `text`) для предотвращения ложных таблиц
+- `pdfplumber_extractor.py`: prompt_type для схем изменён с `ocr_simple` на `parse_figure`
+- `pdfplumber_extractor.py`: убран хардкод "ПУБЛИЧНОЕ АКЦИОНЕРНОЕ ОБЩЕСТВО..." в OCR титульной страницы
+- `native_extractor.py`: footer_ratio снижен с 0.08 до 0.05 для уменьшения ложных пропусков текста
+- `full_hierarchy_parser.py`: расширен whitelist авиационных терминов (EASA, FAA, MEL, Boeing, AMOS, и 40+ терминов) для предотвращения фильтрации легитимного англоязычного текста
+
+### Исправлено
+- Нарушение порядка таблиц и текста (пп. 5, 24 анализа)
+- Текстовые блоки ошибочно превращались в таблицы (пп. 7, 13, 14)
+- Пропуск англоязычных обозначений и аббревиатур (пп. 8, 9)
+- Пропуск рисунков и схем (пп. 10, 12, 22, 23)
+- Потеря текста в нижней части страниц (пп. 11, 15)
+
+---
+
+## [06-02-2026] - Мультиагентная архитектура: миграция правил и профили агентов
+
+### Добавлено
+- Мультиагентный workflow: `.cursor/rules/90_multiagent_workflow.mdc` (роли, handoff, governance-гейты, observability)
+- 12 модульных rule-файлов в `.cursor/rules/` (миграция из монолитного .cursorrules на 5127 строк)
+- 8 профилей агентов в `.cursor/agents/`:
+  - `orchestrator.md` — планирование, координация, governance
+  - `coder-pipeline.md` — OCR/parsing (scripts/pdf_to_context/)
+  - `coder-graph-rag.md` — GraphRAG (scripts/graph/, scripts/rag/)
+  - `coder-bpmn.md` — BPMN XML генерация и валидация
+  - `analyst-raci.md` — анализ документов, RACI, Pipeline (AS-IS)
+  - `reviewer.md` — code review + BPMN review
+  - `validator.md` — тесты, BPMN-валидация, OCR quality
+  - `capsule-builder.md` — документация (с ограничениями конфиденциальности)
+- Доменные handoff-поля: DocumentScope, BPMNImpact, OCR_GPU, DataSensitivity, BackwardCompatibility
+- Governance-гейты: архитектурные решения, GPU/OCR, удаление файлов, input2/ конфиденциальность
+- Бэкап оригинального .cursorrules: `archive/old_docs/cursorrules_backup_2026-02-06.md`
+
+### Изменено
+- `.cursorrules` заменён на минимальный stub (46 строк) со ссылкой на `.cursor/rules/`
+- Переименован `ocr-safety.mdc` → `70_ocr_safety.mdc` (единая нумерация)
+- Маппинг блоков: БЛОК 0→05, БЛОК 1→00, БЛОК 2→10, БЛОК 3→20, БЛОК 4+4.1→30, БЛОК 5+5.1→40, БЛОК 5.2→45, БЛОК 6→50, БЛОК 7→60
+
+---
+
 ## [06-02-2026] - Извлечение определений и сокращений из БНД
 
 ### Добавлено

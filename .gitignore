@@ -82,6 +82,9 @@ docker/**/models/
 docker/**/.cache/
 *.tar
 
+# Multiagent template (симлинк на Nextcloud, индивидуален для каждой машины)
+docs/multiagent_template
+
 # Secrets and Environment
 .env
 .env.local

@@ -1,0 +1,131 @@
+---
+description: BPMN traceability to source documents, BPMN Viewer
+globs:
+  - "output/**/*.bpmn"
+  - "scripts/tools/bpmn_viewer*"
+  - "scripts/utils/add_bpmn_documentation*"
+alwaysApply: false
+---
+
+# Трассировка BPMN элементов к источнику
+
+## Назначение
+
+Трассировка — связь между элементами BPMN и пунктами исходного документа:
+- Видеть источник (раздел, страницу, цитату) для каждого элемента
+- Проверять соответствие схемы документу
+- Обеспечивать аудируемость процесса
+
+## Способы хранения трассировки
+
+### 1. `<bpmn:documentation>` (ОСНОВНОЙ СПОСОБ)
+
+Стандартный BPMN тег внутри каждого элемента.
+
+**Преимущества:**
+- Видно в Camunda Modeler (Properties Panel -> Documentation)
+- Видно в нашем BPMN Viewer
+- Стандарт BPMN 2.0 — работает везде
+- Один файл содержит всё
+
+**Формат:**
+```xml
+<bpmn:manualTask id="Task_51_ProverkaDok" name="5.1.1 Проверка документов">
+  <bpmn:documentation>Документ: СТО И.38-2025 V3, п.5.1, стр.8
+
+При поступлении ТМЦ кладовщик проверяет наличие
+сопроводительных документов.
+
+Длительность: 15 мин
+Система: AMOS
+Ответственный: Кладовщик</bpmn:documentation>
+</bpmn:manualTask>
+```
+
+**Рекомендуемая структура:**
+```
+Документ: [Документ], п.[раздел], стр.[страница]
+
+[Описание/цитата из документа]
+
+Длительность: [время]
+Система: [ИС]
+Ответственный: [роль]
+Документы: [выходные документы]
+```
+
+### 2. XML-комментарий с JSON (ДОПОЛНИТЕЛЬНЫЙ)
+
+JSON с метаданными в комментарии в начале BPMN файла.
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- TRACEABILITY_JSON: {"processId":"Process_1","elements":{"Task_1":{"section":"5.1","page":8,"quote":"..."}}} -->
+<bpmn:definitions ...>
+```
+
+**Когда использовать:** сложные метаданные, автоматическая генерация.
+
+## BPMN Viewer с трассировкой
+
+### Расположение
+- `scripts/tools/bpmn_viewer.html`
+
+### Функционал
+- Панель информации при клике на элемент
+- Автозагрузка JSON из `<!-- TRACEABILITY_JSON: -->`
+- Парсинг `<bpmn:documentation>` каждого элемента
+- Drill-down: двойной клик на SubProcess
+
+### Горячие клавиши
+- `I` — панель информации
+- `Escape` — закрыть / вернуться
+- `Ctrl+O` — открыть файл
+- `Ctrl+S` — сохранить файл
+
+## Автоматическое добавление трассировки
+
+### Скрипт `add_bpmn_documentation.py`
+
+```bash
+python3 scripts/utils/add_bpmn_documentation.py \
+  output/[Процесс]/[Процесс].bpmn \
+  output/[Процесс]/[Процесс]_traceability.json
+```
+
+**Что делает:**
+1. Читает BPMN и traceability.json
+2. Для каждого элемента без documentation создает текст
+3. Добавляет `<bpmn:documentation>`
+4. Создает бэкап (.bpmn.backup)
+
+## Файл трассировки (traceability.json)
+
+```json
+{
+  "processId": "Process_ID",
+  "version": "1.0",
+  "sourceDocument": {
+    "name": "Название документа",
+    "file": "file.docx"
+  },
+  "elements": {
+    "Task_51_ProverkaDok": {
+      "section": "5.1",
+      "page": 8,
+      "quote": "При поступлении ТМЦ...",
+      "responsible": "Кладовщик",
+      "duration": "15 мин",
+      "system": "AMOS",
+      "outputDocs": ["Акт проверки"]
+    }
+  }
+}
+```
+
+## Рекомендуемый workflow
+
+1. Создать BPMN с правильными ID: `Task_[раздел]_[название]`
+2. Создать traceability.json
+3. Запустить скрипт добавления documentation
+4. Проверить в Camunda Modeler и Viewer

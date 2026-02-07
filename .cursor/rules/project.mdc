@@ -1,0 +1,28 @@
+---
+description: Project Rules — entrypoint
+globs:
+  - "**/*"
+alwaysApply: true
+---
+
+# Project Rules
+
+Источник истины по правилам: `.cursor/rules/*.mdc` (модульно).
+
+Этот `project.mdc` — служебная "обвязка" для auto-apply в Cursor и **не содержит** копии правил,
+чтобы исключить дрейф и конфликты требований.
+
+Всегда применяются:
+- `00_global_always.mdc` — глобальные принципы разработки, язык, стиль, changelog
+- `05_environment.mdc` — окружение, платформы, GPU, venv
+- `90_multiagent_workflow.mdc` — мультиагентный workflow
+
+Scoped-правила (применяются по globs):
+- `10_file_structure.mdc` — каталоги, именование, доступ
+- `20_document_workflow.mdc` — пайплайн обработки документа (шаги 1-7)
+- `30_bpmn_methodology.mdc` — методология BPMN (анализ, RACI, Pipeline, валидация)
+- `40_bpmn_technical.mdc` — технические спецификации BPMN XML
+- `45_bpmn_traceability.mdc` — трассировка элементов к источнику
+- `50_documentation.mdc` — связь файлов процесса
+- `60_quality_control.mdc` — чеклисты и критерии качества
+- `70_ocr_safety.mdc` — безопасный запуск OCR (GPU/flash-attn)

@@ -150,8 +150,21 @@ def clean_markdown(markdown: str) -> str:
             # Если > 50% латиницы и при этом есть кириллические символы рядом с латиницей
             # (признак битой кодировки) - это мусор
             if total_alpha > 10 and latin_chars > total_alpha * 0.6:
-                # Исключаем нормальные паттерны: коды документов, email, термины
-                if not re.search(r'(ДП-|РК|СТО|ISO|IATA|ICAO|DCS|PNL|MVT|LDM|APIS|@|http)', line_stripped):
+                # Исключаем нормальные паттерны: коды документов, email, авиационные термины
+                if not re.search(
+                    r'(ДП-|РК|СТО|КД-|РД-|ИОТ-|'
+                    r'ISO|IATA|ICAO|DCS|PNL|MVT|LDM|APIS|'
+                    r'EASA|FAA|MEL|CDL|SB|AD|AMP|MRB|RVSM|ETOPS|'
+                    r'MMEL|MPD|CMM|IPC|AMM|TSM|FIM|WDM|SRM|'
+                    r'AMOS|SAP|ERP|CRM|SMS|QMS|EFB|OCC|AOC|'
+                    r'NOTAM|SIGMET|METAR|TAF|RVR|ILS|VOR|NDB|DME|'
+                    r'PIC|SIC|FE|LAE|TRE|TRI|SFI|SFE|'
+                    r'Boeing|Airbus|ATR|Bombardier|Embraer|'
+                    r'B737|B767|A320|CRJ|DHC|'
+                    r'UTC|GMT|MSK|'
+                    r'@|http|www\.)',
+                    line_stripped
+                ):
                     skip = True
         
         if not skip:
