@@ -113,7 +113,8 @@ def ocr_title_page(pdf_path: str | Path,
                    timeout: int = 60,
                    scale: float = 2.0,
                    fallback_scale: float = 1.0,
-                   prompt_type: str = "default") -> Optional[str]:
+                   prompt_type: str = "default",
+                   qwen_service=None) -> Optional[str]:
     """
     Распознать титульную страницу через OCR.
     
@@ -124,6 +125,7 @@ def ocr_title_page(pdf_path: str | Path,
         pdf_path: Путь к PDF
         ocr_url: URL OCR сервиса
         timeout: Таймаут запроса
+        qwen_service: QwenVLService для локального VLM (приоритет над HTTP)
     
     Returns:
         Markdown текст титульной страницы или None при ошибке
@@ -148,8 +150,44 @@ def ocr_title_page(pdf_path: str | Path,
             buffer.seek(0)
             return buffer
         
-        # Отправляем на OCR
-        def request_ocr(buffer: BytesIO) -> Optional[str]:
+        def _format_title_result(text: str) -> Optional[str]:
+            """Формирует markdown из OCR результата."""
+            lines = []
+            for line in text.split('\n'):
+                line = line.strip()
+                if line and not line.startswith('BASE:') and not line.startswith('NO PATCHES'):
+                    lines.append(line)
+            if not lines:
+                return None
+            title_md = "# ТИТУЛЬНАЯ СТРАНИЦА\n\n"
+            for line in lines:
+                if line:
+                    title_md += f"{line}\n\n"
+            version_info = _extract_version_from_ocr(lines)
+            if version_info:
+                title_md += f"\n**Версия:** {version_info}\n\n"
+            return title_md
+        
+        # Вариант 1: Qwen VLM (локальный, приоритет)
+        if qwen_service is not None:
+            try:
+                buffer = render_to_buffer(scale)
+                image_bytes = buffer.read()
+                ocr_text = qwen_service.process_image(
+                    image_bytes,
+                    "Извлеки весь текст с титульной страницы документа. "
+                    "Включи: название организации, название документа, код документа, "
+                    "номер издания, ревизию, дату введения, город, год. Формат: Markdown."
+                )
+                if ocr_text:
+                    result = _format_title_result(ocr_text)
+                    if result:
+                        return result
+            except Exception as exc:
+                print(f"Qwen VLM title OCR error: {exc}")
+        
+        # Вариант 2: DeepSeek OCR HTTP
+        def request_ocr_http(buffer: BytesIO) -> Optional[str]:
             response = requests.post(
                 ocr_url,
                 files={"file": ("title.jpg", buffer, "image/jpeg")},
@@ -160,40 +198,26 @@ def ocr_title_page(pdf_path: str | Path,
                 return None
             result = response.json()
             markdown = result.get("markdown", "")
-            lines = []
-            for line in markdown.split('\n'):
-                line = line.strip()
-                if line and not line.startswith('BASE:') and not line.startswith('NO PATCHES'):
-                    lines.append(line)
-            # Формируем markdown из реального OCR текста (без хардкода)
-            title_md = "# ТИТУЛЬНАЯ СТРАНИЦА\n\n"
-            for line in lines:
-                if line:
-                    title_md += f"{line}\n\n"
-            # Извлекаем версию документа (ИЗДАНИЕ/РЕВИЗИЯ) из OCR текста
-            version_info = _extract_version_from_ocr(lines)
-            if version_info:
-                title_md += f"\n**Версия:** {version_info}\n\n"
-            return title_md
+            return _format_title_result(markdown)
         
         try:
             buffer = render_to_buffer(scale)
-            title_md = request_ocr(buffer)
+            title_md = request_ocr_http(buffer)
             if title_md:
                 return title_md
         except Exception as exc:
-            print(f"⚠️ Ошибка OCR титульной (scale={scale}): {exc}")
+            print(f"DeepSeek title OCR error (scale={scale}): {exc}")
         if fallback_scale and fallback_scale != scale:
             try:
                 buffer = render_to_buffer(fallback_scale)
-                title_md = request_ocr(buffer)
+                title_md = request_ocr_http(buffer)
                 if title_md:
                     return title_md
             except Exception as exc:
-                print(f"⚠️ Ошибка OCR титульной (scale={fallback_scale}): {exc}")
+                print(f"DeepSeek title OCR error (scale={fallback_scale}): {exc}")
         return None
     except Exception as e:
-        print(f"⚠️ Ошибка OCR титульной: {e}")
+        print(f"Title OCR error: {e}")
         return None
     finally:
         if doc is not None:
@@ -241,7 +265,8 @@ def extract_text_pdfplumber(pdf_path: str | Path,
                             ocr_title: bool = True,
                             ocr_url: str = "http://localhost:8000/ocr/figure",
                             ocr_graphics: bool = False,
-                            ocr_base_url: str = "http://localhost:8000") -> str:
+                            ocr_base_url: str = "http://localhost:8000",
+                            ocr_engine: str = "deepseek") -> str:
     """
     Извлечь текст из PDF используя pdfplumber.
     
@@ -263,7 +288,28 @@ def extract_text_pdfplumber(pdf_path: str | Path,
     
     # Проверяем нужен ли OCR для титульной
     use_ocr_for_title = ocr_title and is_title_page_corrupted(pdf_path)
-    ocr_client = OCRClient(base_url=ocr_base_url, max_retries=1, timeout=15) if ocr_graphics else None
+    
+    # Инициализация OCR-движка
+    ocr_client = None
+    qwen_service = None
+    if ocr_graphics:
+        if ocr_engine == "qwen":
+            # Qwen 2B VLM — загружается локально, не требует отдельного сервиса
+            try:
+                from scripts.pdf_to_context.ocr_service.qwen_service import QwenVLService
+                qwen_service = QwenVLService(max_new_tokens=1024)
+                if qwen_service.is_available():
+                    print("   🧠 OCR engine: Qwen2-VL-2B (локальный VLM)")
+                else:
+                    qwen_service = None
+                    print("   ⚠️ Qwen VL недоступен, fallback на DeepSeek OCR")
+            except Exception as e:
+                print(f"   ⚠️ Qwen VL init error: {e}, fallback на DeepSeek OCR")
+                qwen_service = None
+        
+        if qwen_service is None:
+            ocr_client = OCRClient(base_url=ocr_base_url, max_retries=1, timeout=30) if ocr_graphics else None
+    
     native_extractor = NativeExtractor(
         extract_images=True,
         extract_drawings=True,
@@ -272,7 +318,7 @@ def extract_text_pdfplumber(pdf_path: str | Path,
         vector_render_dpi=300
     ) if ocr_graphics else None
     fitz_doc = fitz.open(str(pdf_path)) if ocr_graphics else None
-    ocr_graphics_active = bool(ocr_graphics and ocr_client and native_extractor and fitz_doc)
+    ocr_graphics_active = bool(ocr_graphics and (ocr_client or qwen_service) and native_extractor and fitz_doc)
     
     # LayoutDetector для надежной фильтрации колонтитулных изображений (Категория 3)
     layout_detector = None
@@ -309,7 +355,7 @@ def extract_text_pdfplumber(pdf_path: str | Path,
             # Титульная страница с OCR
             if i == 0 and use_ocr_for_title:
                 markdown_parts.append(f"\n<!-- Страница {page_num} (OCR) -->\n")
-                ocr_result = ocr_title_page(pdf_path, ocr_url)
+                ocr_result = ocr_title_page(pdf_path, ocr_url, qwen_service=qwen_service)
                 if ocr_result:
                     markdown_parts.append(ocr_result)
                 else:
@@ -442,37 +488,12 @@ def extract_text_pdfplumber(pdf_path: str | Path,
                         continue
                     
                     figure_counter += 1
-                    
-                    # Попытка YOLO12 DiagramDetector (если модель обучена)
-                    if diagram_detector and image_block.image_data:
-                        diagram_result = _detect_diagram_elements(
-                            diagram_detector, image_block.image_data,
-                            ocr_client, page_num, image_block.bbox
-                        )
-                        if diagram_result:
-                            ocr_chunks.append(diagram_result)
-                            continue
-                    
-                    # Fallback на OCR
-                    try:
-                        ocr_response = ocr_client.ocr_image(
-                            image_data=image_block.image_data,
-                            page_num=page_num,
-                            bbox=image_block.bbox,
-                            prompt_type="parse_figure",
-                            base_size=1280,
-                            image_size=1280
-                        )
-                    except RuntimeError as exc:
-                        print(f"OCR image error (page {page_num}): {exc}")
-                        ocr_response = None
-                        ocr_graphics_active = False
-                    if ocr_response:
-                        structured = _format_ocr_structure(ocr_response.markdown)
-                        if structured:
-                            ocr_chunks.append(structured)
-                    else:
-                        ocr_chunks.append(f"\n[Рисунок {figure_counter}, стр. {page_num}]\n")
+                    ocr_text = _process_image_ocr(
+                        image_block.image_data, page_num, image_block.bbox,
+                        qwen_service, ocr_client, figure_counter
+                    )
+                    if ocr_text:
+                        ocr_chunks.append(ocr_text)
                 
                 # Векторные схемы — порог снижен до 0.02 с LayoutDetector
                 drawing_blocks = native_extractor.extract_drawing_blocks(
@@ -498,43 +519,45 @@ def extract_text_pdfplumber(pdf_path: str | Path,
                     if not image_bytes:
                         continue
                     figure_counter += 1
-                    
-                    # Попытка YOLO12 DiagramDetector (если модель обучена)
-                    if diagram_detector and image_bytes:
-                        diagram_result = _detect_diagram_elements(
-                            diagram_detector, image_bytes,
-                            ocr_client, page_num, drawing_block.bbox
-                        )
-                        if diagram_result:
-                            ocr_chunks.append(diagram_result)
-                            continue
-                    
-                    # Fallback на OCR
-                    try:
-                        ocr_response = ocr_client.ocr_image(
-                            image_data=image_bytes,
-                            page_num=page_num,
-                            bbox=drawing_block.bbox,
-                            prompt_type="parse_figure",
-                            base_size=1280,
-                            image_size=1280
-                        )
-                    except RuntimeError as exc:
-                        print(f"OCR drawing error (page {page_num}): {exc}")
-                        ocr_response = None
-                        ocr_graphics_active = False
-                    if ocr_response:
-                        structured = _format_ocr_structure(ocr_response.markdown)
-                        if structured:
-                            ocr_chunks.append(structured)
-                    else:
-                        ocr_chunks.append(f"\n[Схема {figure_counter}, стр. {page_num}]\n")
+                    ocr_text = _process_image_ocr(
+                        image_bytes, page_num, drawing_block.bbox,
+                        qwen_service, ocr_client, figure_counter
+                    )
+                    if ocr_text:
+                        ocr_chunks.append(ocr_text)
+                
+                # Если на странице есть vector drawings но ни один не попал в OCR,
+                # и Qwen доступен — рендерим всю страницу целиком (п.10: оргструктуры)
+                if not ocr_chunks and qwen_service is not None and drawing_blocks:
+                    # Подсчитаем общую площадь drawings на странице
+                    total_drawing_area = sum(
+                        db.bbox.area() for db in drawing_blocks
+                        if not (hf_bboxes and _bbox_overlaps_any(db.bbox, hf_bboxes))
+                    )
+                    if total_drawing_area / page_area > 0.15:
+                        # Значимая часть страницы — векторная графика
+                        page_png = _render_page_to_png(fitz_page, dpi=200)
+                        if page_png:
+                            figure_counter += 1
+                            ocr_text = _process_image_ocr(
+                                page_png, page_num, None,
+                                qwen_service, None, figure_counter
+                            )
+                            if ocr_text:
+                                ocr_chunks.append(ocr_text)
                 
                 if ocr_chunks:
                     markdown_parts.append("\n".join(ocr_chunks))
     
     if fitz_doc:
         fitz_doc.close()
+    
+    # Выгрузить Qwen из GPU после обработки
+    if qwen_service is not None:
+        try:
+            qwen_service.unload_model()
+        except Exception:
+            pass
     
     return '\n'.join(markdown_parts)
 
@@ -1102,6 +1125,86 @@ def _forward_fill_table(data: List[List[str]]) -> List[List[str]]:
                     result[row_idx][col_idx] = last_value
     
     return result
+
+
+def _render_page_to_png(fitz_page, dpi: int = 200) -> Optional[bytes]:
+    """Рендерит страницу PDF в PNG байты для отправки в VLM."""
+    try:
+        import fitz as _fitz
+        zoom = dpi / 72.0
+        mat = _fitz.Matrix(zoom, zoom)
+        pix = fitz_page.get_pixmap(matrix=mat)
+        return pix.tobytes("png")
+    except Exception:
+        return None
+
+
+def _process_image_ocr(
+    image_data: bytes,
+    page_num: int,
+    bbox,
+    qwen_service,
+    ocr_client,
+    figure_counter: int,
+) -> Optional[str]:
+    """
+    Обработка изображения/схемы через VLM (Qwen 2B) или DeepSeek OCR.
+    
+    Приоритет:
+    1. Qwen 2B VLM (локальный, лучше понимает структуру схем)
+    2. DeepSeek OCR (HTTP сервис, быстрый но слабее на схемах)
+    3. Placeholder [Рисунок N, стр. X]
+    
+    Returns:
+        Markdown-описание или placeholder. None если обработка не удалась.
+    """
+    # Вариант 1: Qwen 2B VLM (предпочтительный для схем)
+    if qwen_service is not None:
+        try:
+            # Определяем промпт по размеру изображения
+            from PIL import Image as PILImage
+            import io as _io
+            img = PILImage.open(_io.BytesIO(image_data))
+            w, h = img.size
+            aspect = w / max(h, 1)
+            
+            # Широкое изображение (таблица) или квадратное (схема)
+            if aspect > 2.0:
+                prompt = "table"
+            else:
+                prompt = (
+                    "Опиши эту схему/диаграмму на русском языке. "
+                    "Если это организационная структура — опиши иерархию подчинения в формате списка. "
+                    "Если это блок-схема — опиши последовательность шагов и условия. "
+                    "Бери текст точно из прямоугольников и блоков на схеме."
+                )
+            
+            result = qwen_service.process_image(image_data, prompt)
+            if result and len(result.strip()) > 10:
+                return f"\n**Описание схемы (стр. {page_num}, Qwen VLM):**\n\n{result.strip()}\n"
+        except Exception as e:
+            print(f"Qwen VLM error (page {page_num}): {e}")
+    
+    # Вариант 2: DeepSeek OCR (HTTP сервис)
+    if ocr_client is not None:
+        try:
+            ocr_response = ocr_client.ocr_image(
+                image_data=image_data,
+                page_num=page_num,
+                bbox=bbox,
+                prompt_type="parse_figure",
+                base_size=1280,
+                image_size=1280
+            )
+            if ocr_response:
+                structured = _format_ocr_structure(ocr_response.markdown)
+                if structured:
+                    return structured
+        except RuntimeError as exc:
+            print(f"OCR error (page {page_num}): {exc}")
+    
+    # Вариант 3: Placeholder
+    return f"\n[Рисунок {figure_counter}, стр. {page_num}]\n"
 
 
 def _detect_diagram_elements(

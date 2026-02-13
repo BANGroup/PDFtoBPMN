@@ -288,7 +288,8 @@ def parse_document_full(
     pdf_path: str,
     enable_ocr: bool = True,
     ocr_base_url: str = "http://localhost:8000",
-    use_pdfplumber: bool = False
+    use_pdfplumber: bool = False,
+    ocr_engine: str = "deepseek"
 ) -> FullParseResult:
     """
     Полный парсинг документа.
@@ -328,7 +329,8 @@ def parse_document_full(
             ocr_title=enable_ocr,
             ocr_url=f"{ocr_base_url}/ocr/figure",
             ocr_graphics=enable_ocr,
-            ocr_base_url=ocr_base_url
+            ocr_base_url=ocr_base_url,
+            ocr_engine=ocr_engine
         )
     else:
         # PDFToContextPipeline - поддерживает OCR
