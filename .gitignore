@@ -65,7 +65,8 @@ output
 *.md.bak
 
 # Archive (исключить полностью для публичного репозитория)
-archive/
+archive/*
+!archive/legacy_2026/
 
 # Temporary files and logs
 *.log

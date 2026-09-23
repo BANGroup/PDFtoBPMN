@@ -795,7 +795,7 @@ bash scripts/tests/smoke_test.sh
 
 | Документ | Описание |
 |----------|----------|
-| **[archive/finance_parsers/](archive/finance_parsers/)** | 📦 Финансовые парсеры (архив) |
+| **[archive/legacy_2026/scripts/finance_parsers/](archive/legacy_2026/scripts/finance_parsers/)** | 📦 Финансовые парсеры (архив, TASK-018) |
 
 ---
 
