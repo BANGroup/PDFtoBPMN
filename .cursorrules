@@ -14,20 +14,15 @@
     30_bpmn_and_bs.mdc            BPMN compiler, Camunda, Business Studio sync
     40_rag.mdc                    Hybrid retrieval, authority bias, citations
     50_quality.mdc                Tests, metrics, Gold Standard
+    60_todo_portal.mdc            Работа с порталом todo, контракт каталогов БНД/РПП
     project.mdc                   Обвязка auto-apply, архитектура кратко
   agents/
-    orchestrator.md               Plan Mode, Opus 4.6 — планирует, ревьюит
-    coder.md                      Agent Mode, Sonnet 4.6 — код по плану
-    validator.md                  Agent Mode, Composer 1.5 — pre/post gate
-    scribe.md                     Agent Mode, Sonnet 4.6 — docs, state, Gold Standard
-  hooks/
-    check_handoff.py              beforeSubmitPrompt — нет handoff → block
-    block_orchestrator_code.py    beforeShellExecution — orchestrator код → block
-    check_ownership.py            afterFileEdit — вне зоны → block
-    record_stop.py                stop — лог + warn
-  state/
-    dev_graph.py                  LangGraph: decisions, components, handoffs
-    batch_graph.py                LangGraph: batch pipeline (Phase 4)
+    orchestrator.md               модель основного чата — планирует, уровень риска, ревьюит
+    coder.md                      Grok 4.7 — код по плану
+    validator.md                  GPT-5.6 Sol — pre/post gate (другое семейство, чем coder)
+    scribe.md                     Composer 2.5 Fast — docs, журнал действий, Gold Standard
+    extractor.md                  Claude Opus 5.5 — typed extraction из текста СМК
+  hooks/                          отключены (D-036); safety_guard — TASK-019 P3
   commands/
     start.md                      /start — первая команда orchestrator'у
   plans/
@@ -40,11 +35,11 @@
 - Всегда отвечать на русском языке
 - AS-IS моделирование (не додумывать логику; подробнее — Rule 0)
 - Graph as SSOT (D-001): BPMN, RACI, KPI — views из графа
-- 4 агента с hooks enforcement (D-005)
+- 5 агентов (D-011), уровни риска low/medium/high — `00_global_always.mdc`
 - Один pipeline, не два контура (D-009)
 - Docling + OCR, не PyMuPDF (D-008)
 - Архитектурный анализ ПЕРЕД кодированием
-- НЕ делать git коммиты (пользователь сам)
+- Коммит и пуш — только по команде пользователя
 
 ## Бэкап v1
 

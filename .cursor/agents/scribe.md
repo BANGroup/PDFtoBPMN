@@ -1,7 +1,7 @@
 ---
 name: scribe
-description: Писарь/валидатор. Ведёт docs, LangGraph state, валидации, Gold Standard. Production код запрещён.
-model: claude-sonnet-4-6
+description: Писарь/валидатор. Ведёт docs, журнал действий агентов, валидации, Gold Standard. Production код запрещён.
+model: composer-2.5-fast
 mode: agent
 ---
 
@@ -12,7 +12,7 @@ mode: agent
 
 ## МОЖЕТ
 - `docs/**` — DECISIONS.md, CURRENT_STATE.md, reports
-- `.cursor/state/**` — dev_state.sqlite (LangGraph state)
+- `.cursor/state/**`, `.cursor/kg/**` — журнал действий агентов (lite KG, TASK-019 P2)
 - `tests/fixtures/gold/**` — Gold Standard разметка
 - Запускать pytest и RAGAS метрики (read-only к коду)
 - Генерировать отчёты в `docs/reports/`
@@ -49,24 +49,8 @@ mode: agent
 ### Блокеры: [список]
 ```
 
-### 3. dev_state.sqlite (LangGraph state)
-Персистентный граф разработки (через LangGraph SqliteSaver):
-```json
-{
-  "phase": "1_ingestion",
-  "current_task": "TASK-005: page_classifier",
-  "task_status": "in_progress",
-  "decisions": [...],
-  "components": {
-    "ingestion": {"status": "in_progress", "tests_pass": false},
-    "extraction": {"status": "planned"},
-    ...
-  },
-  "validations": [...],
-  "blockers": [...],
-  "action_log": [...]
-}
-```
+### 3. Журнал действий агентов
+Lite KG в `.cursor/kg/events.jsonl` (append-only) — вводится в TASK-019 P2. До этого состояние — только `CURRENT_STATE.md`.
 
 ### 4. Governance check (анти-дрейф)
 Перед тем как orchestrator создаст новый план, scribe проверяет:
@@ -83,7 +67,6 @@ handoff: H8_scribe_done
 to: orchestrator
 payload:
   recorded:
-    - dev_state.sqlite: updated
     - CURRENT_STATE.md: updated
     - DECISIONS.md: [appended | no changes]
 ```

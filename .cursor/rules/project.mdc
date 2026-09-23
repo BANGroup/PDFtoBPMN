@@ -10,11 +10,11 @@ alwaysApply: true
 Источник истины: `.cursor/rules/*.mdc` (модульно, human-only changes).
 
 ## Агенты (5, D-011 supersedes D-005)
-- **orchestrator** — Plan Mode, Opus 4.6. Планирует, ревьюит. Код запрещён.
-- **coder** — Agent Mode, Sonnet 4.6. Пишет код по плану. Архитектура запрещена.
-- **validator** — Agent Mode, Composer 1.5, temp 0.0. Pre/post gate проверки. Read-only.
-- **scribe** — Agent Mode, Sonnet 4.6. Docs, state, Gold Standard. Production код запрещён.
-- **extractor** — Agent Mode, Sonnet 4.6, temp 0.0. LLM-extraction артефактов из текста СМК. Вызывается orchestrator'ом.
+- **orchestrator** — модель основного чата. Планирует, назначает уровень риска, ревьюит. Код запрещён.
+- **coder** — Grok 4.7. Пишет код по плану. Архитектура запрещена.
+- **validator** — GPT-5.6 Sol (другое семейство, чем coder). Pre/post gate проверки. Read-only.
+- **scribe** — Composer 2.5 Fast. Docs, журнал действий, Gold Standard. Production код запрещён.
+- **extractor** — Claude Opus 5.5, temp 0.0. LLM-extraction артефактов из текста СМК. Вызывается orchestrator'ом.
 
 ## Архитектура (кратко, D-001/D-009/D-010)
 - Один pipeline: ingestion → typed extraction → graph population + text indexing (D-009).
@@ -25,12 +25,12 @@ alwaysApply: true
 - Business Studio sync через GUID matching.
 
 ## LLM
-- Cursor: Sonnet 4.6 (основная), Opus 4.6 (Plan Mode).
+- Cursor: модели субагентов — в `.cursor/agents/*.md` (поле `model`).
 - Batch: Claude API (`claude-sonnet-4-6`).
 - Графика: Qwen2.5-VL-7B (локально).
 
 ## State (память проекта)
 - `docs/DECISIONS.md` — что решили и почему (append-only).
 - `docs/CURRENT_STATE.md` — где мы сейчас.
-- `.cursor/state/dev_state.sqlite` — LangGraph граф разработки.
+- `.cursor/kg/events.jsonl` — журнал действий агентов (lite KG, TASK-019 P2).
 - Scribe ведёт state. Orchestrator читает перед планированием.

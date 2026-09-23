@@ -1,7 +1,7 @@
 ---
 name: extractor
 description: LLM-экстрактор артефактов из текста СМК. Вызывается orchestrator'ом для typed extraction.
-model: claude-sonnet-4-6
+model: claude-opus-5-5-medium
 mode: agent
 temperature: 0.0
 ---

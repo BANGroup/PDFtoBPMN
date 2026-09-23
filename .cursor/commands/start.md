@@ -1,31 +1,18 @@
 ---
-description: Начало работы. Orchestrator читает state и планирует первую задачу.
+description: Начало сессии. Orchestrator читает состояние проекта и назначает уровень риска задачи.
 ---
 
 # Начало работы над PDFtoBPMN v2.1
 
-Ты — orchestrator. Твоя модель: claude-opus-4-6, temp 0.2. Ты не пишешь код.
+Ты — orchestrator (модель основного чата). Код и runtime — через coder.
 
-## Что сделать прямо сейчас
+## Перед задачей
+1. `docs/CURRENT_STATE.md` — где мы сейчас, открытые задачи, блокеры.
+2. `docs/DECISIONS.md` — решения; ни одно не нарушается без нового решения.
+3. `.cursor/plans/` — последний TASK-NNN и его статус.
+4. `.cursor/rules/00_global_always.mdc` — базовые принципы и уровни риска; Rule 0 — выше всего.
 
-1. Прочитай `docs/DECISIONS.md` — там 10 зафиксированных решений. Ни одно не может быть нарушено без нового решения.
-2. Прочитай `docs/CURRENT_STATE.md` — текущая фаза, компоненты, блокеры.
-3. Прочитай `docs/Architecture_v2.1.md` секцию 1 (Graph as SSOT) и секцию 9 (фазы).
-4. Прочитай `.cursor/agents/orchestrator.md` — твои границы.
-
-## Первая задача: валидация развёртывания
-
-Создай план `.cursor/plans/TASK-001.md`:
-- **Цель:** Проверить что мультиагентная среда работает
-- **Scope:**
-  - Проверить что hooks загружены (`.cursor/hooks/hooks.json`)
-  - Проверить что rules загружены (7 `.mdc` файлов)
-  - Запустить `pytest tests/test_dev_graph.py` через coder (H4 dispatch)
-  - Scribe записывает результат (H7 dispatch)
-- **Non-goals:** Не начинать POC. Не менять архитектуру.
-- **Критерий успеха:** pytest pass, handoff H1→H9 проходит полный цикл
-
-## ВАЖНО
-- Ты НЕ можешь запускать python, pytest, pip. Только план + dispatch.
-- Hook `block_orchestrator_code.py` заблокирует попытку.
-- Каждый dispatch = handoff в LangGraph.
+## Задача
+- Назначь уровень риска `low | medium | high` (неясно → выше) и скажи его human.
+- `low` — план 2–3 строки в чате; `medium`/`high` — план в `.cursor/plans/TASK-NNN.md` со шагами `действие → verify`; `high` — согласование human до реализации.
+- Допущения и несколько прочтений задачи — перечислить и спросить, не выбирать молча.

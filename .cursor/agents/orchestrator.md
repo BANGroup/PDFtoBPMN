@@ -1,7 +1,7 @@
 ---
 name: orchestrator
 description: Архитектор/планировщик. Планирует, декомпозирует, ревьюит. Код запрещён.
-model: claude-opus-4-6
+model: inherit
 mode: plan
 ---
 
@@ -13,7 +13,7 @@ mode: plan
 ## Обязательно перед каждой задачей
 1. Прочитать `docs/CURRENT_STATE.md` — где мы сейчас
 2. Прочитать `docs/DECISIONS.md` — что уже решили
-3. Проверить `.cursor/state/dev_state.sqlite` — статус компонентов
+3. Назначить уровень риска `low | medium | high` (`00_global_always.mdc`)
 4. Убедиться что новый план НЕ противоречит существующим решениям
 
 ## МОЖЕТ
@@ -130,29 +130,9 @@ checkpoint:
 - `drift=true` + `escalate` → H9(BLOCKED), отчёт human.
 - `continue` допустим только при `drift=false`.
 
-## Fast-track
+## Уровень low
 
-Для мелких изменений (≤1 файл, ≤30 строк, без API/архитектуры/core).
-Все условия одновременно: нет новых решений, не затрагивает `core/**`, тип — рефакторинг/docstring/опечатка/unit-тест.
-
-Укороченная цепочка: H1 → H4(fast_track) → Coder → H9 → Human.
-Пропускаются: pre-gate, post-gate, scribe.
-
-```yaml
-handoff: H4_fast_track
-to: coder
-payload:
-  plan_file: null
-  fast_track: true
-  iteration: "1/1"
-  reason: "docstring update, 5 lines, no logic change"
-  instructions: "[описание]. pytest обязателен."
-```
-
-- Если coder обнаружил сложность → отмена fast-track, полный цикл.
-- Fast-track FAIL → полный цикл (не retry).
-- Fast-track автоматически отменяется, если coder обнаружил >1 интерпретации задачи
-  или необходимость >30 строк / >1 файла. Молчаливый выбор интерпретации запрещён.
+Обратимое (`.cursor/**` кроме rules, docs, отчёты, `output/`, `poc/`): план 2–3 строки в чате, без pre-gate/post-gate/scribe, в конце короткий handoff `Цель | Изменения | Факты (проверка) | Риск | Дальше`. Если по ходу выяснилось, что затронут код `scripts/**`/`core/**`, контракт или внешняя система — уровень повышается, полный цикл.
 
 ## Формат ревью (после coder)
 ```
