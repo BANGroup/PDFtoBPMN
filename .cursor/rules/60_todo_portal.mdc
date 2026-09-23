@@ -1,0 +1,50 @@
+---
+description: Работа с порталом в /home/budnik_an/todo (webBI, backend, docker, деплой) и контракт каталогов БНД/РПП, которые пишет scripts/ingestion/bnd_sync. Читать перед любой правкой или командой в todo.
+globs:
+  - "scripts/ingestion/bnd_sync/**"
+alwaysApply: false
+---
+
+# Портал todo: работа из Obligations
+
+Портал и docker живут в `/home/budnik_an/todo`. Первоисточник правил — `todo/.cursor/rules/*.mdc`; здесь выжимка того, что нельзя нарушить. При расхождении прав todo. Кросс-репо политика — D-023.
+
+## Перед любой правкой в todo
+- `git -C /home/budnik_an/todo pull`, затем прочитать `todo/.cursor/rules/` (урок TASK-011: устаревшая копия todo снесла чужие фичи).
+- Каждое значимое изменение — запись в `todo/CHANGELOG.md` (Keep a Changelog, секция `[Unreleased]`). Видимое пользователю — ещё и «Что нового» на странице. Источник: `changelog.mdc`.
+- Коммит и пуш в todo делает human.
+
+## СТОП: продакшен-БД (`docker-db.mdc`)
+Не выполнять ни при каких обстоятельствах, остановиться и спросить human:
+- `docker cp *.db kk-backend:*`, любой `docker cp` в `/app/data/`;
+- `docker volume rm *kk-data*`;
+- любую команду, перезаписывающую `/app/data/kk.db` в контейнере.
+Схема БД меняется только миграцией в `init_db()` (`todo/backend/db.py`).
+
+## Деплой (`docker-db.mdc`, `subagent-governance.mdc`)
+| Что изменилось | Действие |
+|---|---|
+| HTML/CSS/JS или JSON в `webBI/` | ничего — bind mount `./webBI:/app/webBI` |
+| `backend/app.py`, Python в `backend/`, `lotus-mcp/` | `docker compose build backend && docker compose up -d backend` |
+| `requirements.txt` / Dockerfile | `--no-cache` — только с явного согласия human |
+- Всегда указывать сервис (`backend`): без имени пересобираются все сервисы (~4 мин).
+- После перезагрузки: `docker compose down && docker compose up -d`, не `restart` (ломается bind mount).
+- Успех докладывать только после `curl -s -o /dev/null -w "%{http_code}" http://localhost:8050/<путь>` → 200 и `docker logs kk-backend --tail 10` без ошибок.
+
+## HTML портала (`subagent-governance.mdc`, `webbi-html.mdc`, `portal-navigation.mdc`, `utair-brand.mdc`)
+- Основной агент не редактирует `todo/webBI/*.html`. Только Publisher-субагент, промпт со ссылкой на `todo/.cursor/skills/webbi-publisher/SKILL.md`, критериями приёмки (2–5, проверяемые) и «не удаляй существующую функциональность».
+- Бренд: цвета только `--utair-*`, шрифт Suisse Int'l через `portal-nav.css`, навигация `.pn-header-nav` + `.pn-breadcrumbs`, `@media` 1024/768.
+- Максимум 3 итерации с субагентом, дальше — стоп и доклад.
+
+## Только чтение
+- MCP Domino / Jira / Singularity — только чтение без явного разрешения (`mcp-readonly.mdc`).
+- Ассистент портала (`backend/assistant*.py`) — read-only, хук `backend/assistant_readonly.py` не обходить (`portal-assistant-readonly.mdc`).
+- hosts / corp-DNS: не отключать VPN, hosts писать только штатными скриптами (`windows-hosts-dns.mdc`).
+
+## Контракт каталогов БНД/РПП (TASK-017)
+Ночная сборка `scripts/ingestion/bnd_sync/` пишет входы портала в `BND_WEBBI_DIR` (дефолт `/home/budnik_an/todo/webBI`):
+- `doc-catalog.json` — отдаёт `/doc-catalog.json`, читают `qms-process-map.html`, `backend/assistant.py`;
+- `doc-catalog.state.json` — отдаёт `/doc-catalog.state.json` (дата прогона на карте процессов);
+- `rpp-catalog.json` — отдаёт `/rpp-catalog.json`, читает `rpp-navigator.html`.
+Имена, схема JSON и место файлов — публичный контракт: менять только вместе с порталом. Запись атомарная (`.tmp` + `os.replace`), портал не должен видеть отсутствующий файл.
+Корпус файлов — `Obligations/data/bnd_corpus/` (портал его не читает).

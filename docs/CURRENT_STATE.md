@@ -18,6 +18,7 @@
 - ✅ **mcp_superset**: Superset API (bi.utair.io)
 - ✅ **mcp_jira**: Jira Server (jira.utair.ru)
 - ✅ **mcp_singularity**: Singularity App
+- ✅ **bnd_sync**: ночная сборка корпуса БНД (cron 01:00, `scripts/ingestion/bnd_sync/`, логи `data/bnd_sync/logs/`); отчёт — бот ДВК (Mattermost DM, 3 получателя: budnik_an, lavrova_tv, bachurina_iv)
 
 ### Сделано
 - Bootstrap v2.1 выполнен (ветка v2-graphrag, 2 коммита)
@@ -332,10 +333,41 @@ aggregation (APN 0399, опц.)`.
   - `webBI/cup-tsup/static/style.css` (hover для `.trace-kpi-note-tag`)
   - `webBI/sw.js` (`portal-v5 → portal-v6`)
 
+### TASK-017 (23.09.2026) — перенос ночной сборки корпуса БНД из todo в Obligations
+
+**Цель:** сборка корпуса, прогоны и отчёт (изначально Telegram, с 23.09.2026 — бот ДВК в Mattermost) переехали из todo в Obligations; ошибки зеркала исправлены; портал todo продолжает получать каталоги без перерыва.
+
+**Результат:** Все фазы P0–P4 выполнены. Переключение cron прошло в окне между прогонами 23.09.2026.
+
+**Состояние на 23.09.2026 10:10:**
+- БНД: 358 документов, РПП: 476 записей.
+- Зеркало: 6 751 файл / 8,9 ГБ в manifest (9,4 ГБ на диске; было 25 ГБ).
+- Карантин `data/bnd_sync/quarantine/20260923/` — 7 048 файлов (~16 ГБ): дубли, старые версии, папки после смены даты изменения/переклассификации, два `*.bloated` по 2,4 ГБ.
+  - ⚠ В карантине — единственные копии вложений 16 временных изменений РПП (TR MEL), которые Domino сейчас отдаёт без вложения.
+  - Удаление карантина — **не раньше 30.09.2026, только по команде human**.
+
+**Структура:**
+- `scripts/ingestion/bnd_sync/` — `run_nightly.py`, `cron_nightly.sh`, `build_doc_catalog.py`, `build_rpp_catalog.py`, `download_bnd_corpus.py`, `tg_report.py`.
+- `data/bnd_corpus/` — зеркало (перенесено `mv` из todo; в `todo/data/bnd_corpus` — symlink).
+- `data/bnd_sync/logs/` — логи прогонов; `data/bnd_sync/crontab.backup.20260923` — бэкап crontab.
+- Каталоги пишутся в `BND_WEBBI_DIR` (дефолт `/home/budnik_an/todo/webBI`) атомарно.
+- `.cursor/rules/60_todo_portal.mdc` — правило для работ с порталом todo из Obligations.
+
+**Тесты:** `tests/test_bnd_sync.py` — 14 passed. ⚠ Файл попадает под `.gitignore` (`test_*.py`) — при коммите нужен `git add -f`.
+
+**Следующие шаги:**
+- Контроль 7 ночных прогонов (до 30.09.2026); при всех зелёных — разрешить удаление карантина.
+- P5 — удаление старых скриптов из todo (коммит делает human): `tools/cron_catalog_rebuild.sh`, `tools/catalog_daily_rebuild.py`, `lotus-mcp/build_doc_catalog.py`, `build_rpp_catalog.py`, `download_bnd_corpus.py`.
+- Подключить `data/bnd_corpus/manifest.json` как вход ingestion PDFtoBPMN (отдельная задача).
+
+**Отчёт (23.09.2026 12:15, D-040):** Telegram-отчёт отключён (`TELEGRAM_*` удалены из `.env`). Отчёт уходит личными сообщениями от бота ДВК (Hermes, профиль `mm`, пользователь-бот `dvk`, Mattermost team.utair.io) трём получателям: `budnik_an`, `lavrova_tv`, `bachurina_iv`. Переменные: `MATTERMOST_URL`, `MATTERMOST_TOKEN`, `BND_REPORT_MM_USERS`. Прогон 12:17 — «ММ: отправлено 3/3». Тесты: 14 passed.
+
+**Решение:** D-039, D-040.
+
 ### Блокеры
 - Нет
 
-### Последние handoff'ы
+### Последние handoff'ы (актуальные)
 - H1: Human → Orchestrator (18.03.2026) — /start, валидация развёртывания
 - H9: Orchestrator → Human (18.03.2026) — TASK-001 completed, 11/11 PASS
 - H9: Orchestrator → Human (18.03.2026) — TASK-002 completed, EasyOCR winner (D-012)
@@ -352,3 +384,5 @@ aggregation (APN 0399, опц.)`.
 - H7: Orchestrator → Scribe (04.05.2026) — TASK-009 decisions: D-023 (cross-repo), D-024 (live instead of self-contained), D-025 (CH schema cup.flights); cup_dashboard in_progress (Phase A)
 - H7: Human → Scribe (04.05.2026) — TASK-009 D-026: scope iteration 1 подтверждён (6 data_layer), Phase A.1 закрыта, Phase A.2 начата
 - H7: Orchestrator → Scribe (04.05.2026) — TASK-009 финализация: D-027 (NOT NULL ORDER BY keys), D-028 (numeric coercion); Phases A+B+C+D+E закрыты; дашборд: 533 344 строк, FastAPI + ECharts, готов к деплою на /info/tsup/
+- H8: Scribe → Human (23.09.2026) — TASK-017 зафиксирован: D-039 добавлен в DECISIONS.md; ✅ bnd_sync в CURRENT_STATE.md; 13 тестов passed; карантин до 30.09.2026
+- H7→H8: Scribe (23.09.2026 12:20) — D-040 зафиксирован: Telegram → Mattermost (бот ДВК, DM, 3 получателя); DECISIONS.md D-040 добавлен; CURRENT_STATE.md bnd_sync и TASK-017 обновлены; 14 тестов passed

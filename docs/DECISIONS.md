@@ -598,3 +598,20 @@ IATA-732 для задержек, которые невозможно увере
 - `todo/webBI/iata732/index.html` + `static/{app.js,style.css}` — новая
   вкладка «AMOS-слой / ATA» (TASK-015).
 - `docs/reports/cup_zone2_amos_mapping_v1.md` — отчёт.
+
+## D-039: Корпус БНД и его ночная сборка живут в Obligations; портал и docker остаются в todo (23.09.2026)
+
+**Контекст:** todo — перегруженная копилка проектов, human разбирает его (в перспективе до нуля), это первый шаг. Корпус — вход конвейера PDFtoBPMN (Word-исходники БНД чище OCR). Раньше сборка была в todo: `lotus-mcp/build_doc_catalog.py`, `build_rpp_catalog.py`, `download_bnd_corpus.py`, `tools/catalog_daily_rebuild.py`, `cron_catalog_rebuild.sh`.
+
+**Решение:** Код — `scripts/ingestion/bnd_sync/` (`run_nightly.py`, `cron_nightly.sh`, `build_doc_catalog.py`, `build_rpp_catalog.py`, `download_bnd_corpus.py`, `tg_report.py`); cron 01:00 → `cron_nightly.sh` (строка todo закомментирована, бэкап crontab: `data/bnd_sync/crontab.backup.20260923`). Корпус — `data/bnd_corpus/` (перенесён `mv` из todo, в `todo/data/bnd_corpus` — symlink). Каталоги `doc-catalog.json` / `doc-catalog.state.json` / `rpp-catalog.json` — публичный контракт портала, пишутся в `BND_WEBBI_DIR` (дефолт `/home/budnik_an/todo/webBI`) атомарно; docker/backend портала не менялись. Telegram-отчёт — напрямую через Bot API (`TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` в `Obligations/.env`). Работы с порталом из Obligations — по правилу `.cursor/rules/60_todo_portal.mdc` (выжимка правил todo, первоисточник — `todo/.cursor/rules/`). Расширяет D-023 (cross-repo).
+
+**Исправлено при переносе:** дубли файлов с суффиксом `_<unid>` после первой точки имени (портил номер документа); папки документов после переклассификации оставались сиротами; при сетевом сбое файл выпадал из manifest; ложное «изменений нет» в отчёте; неатомарная запись каталогов (окно «файла нет» для портала); совпадение имён лога wrapper'а и оркестратора. Новые режимы `download_bnd_corpus.py`: `--report-orphans` / `--quarantine-orphans`.
+
+**Отклонено:** (а) перенести каталоги в Obligations и примонтировать в контейнер — меняет docker-compose и требует пересоздания контейнера; symlink из bind mount наружу в контейнере не работает. (б) оставить Telegram через очередь `todo/data/telegram-outbox` — зависимость от todo. (в) перенести синхронизацию `/etc/hosts` — не относится к сборке, каждую ночь пропускалась (нет NOPASSWD sudo).
+
+## D-040: Отчёт ночной сборки БНД — через бота ДВК в Mattermost, не Telegram (23.09.2026)
+**Контекст:** D-039 предусматривал Telegram-отчёт (через Bot API, `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` в `Obligations/.env`). По поручению human 23.09.2026 12:15 Telegram-канал отключён: переменные `TELEGRAM_*` удалены из `Obligations/.env`; отчёт уходит личными сообщениями от бота ДВК (Hermes, профиль `mm`, пользователь-бот `dvk` в Mattermost team.utair.io) трём получателям: Будник А.Н. (`budnik_an`), Лаврова Т.В. (`lavrova_tv`), Бачурина И.В. (`bachurina_iv`) — все в `MATTERMOST_ALLOWED_USERS`.
+**Реализация:** `run_nightly.send_report()` через Mattermost API (`/users/usernames` → `/channels/direct` → `/posts`); переменные `MATTERMOST_URL`, `MATTERMOST_TOKEN` (токен бота dvk из `~/.hermes/profiles/mm/.env`), `BND_REPORT_MM_USERS` в `Obligations/.env`; флаг `--no-notify`. Прогон 23.09.2026 12:17: «ММ: отправлено 3/3». Тесты: 14 passed.
+**Замещает:** часть D-039, касающуюся Telegram-отчёта. D-039 в остальном остаётся в силе.
+**Отклонено:** группа Telegram (human попросил убрать, 23.09.2026); канал Mattermost вместо личных сообщений (human назвал конкретных получателей — только DM).
+**Нюанс:** ранее отправленные сообщения в группе Telegram удалить автоматически нельзя — `message_id` не сохранялись; удаление вручную.
