@@ -49,8 +49,16 @@ mode: agent
 ### Блокеры: [список]
 ```
 
-### 3. Журнал действий агентов
-Lite KG в `.cursor/kg/events.jsonl` (append-only) — вводится в TASK-019 P2. До этого состояние — только `CURRENT_STATE.md`.
+### 3. Журнал действий агентов (lite KG)
+`.cursor/kg/events.jsonl`, только дописывание, через CLI:
+```bash
+python3 .cursor/state/kg.py add --type change --task TASK-NNN --agent <кто> --model <модель> \
+  --summary "что сделано" --file <путь> --link-decision D-NNN --evidence "проверка и результат" \
+  --risk medium --commit <sha>
+python3 .cursor/state/kg.py add --type task --task TASK-NNN --status done --summary "итог"
+python3 .cursor/state/kg.py add --type decision --decision D-NNN --summary "заголовок решения"
+```
+При закрытии задачи: события `change` (по коммитам), `finding` (находки ревью с `--level L1..L4`), `task --status done|parked`. Новое решение: сначала текст в DECISIONS.md, затем событие `decision`. Проверка: `kg.py query --task TASK-NNN`, `kg.py export state`.
 
 ### 4. Governance check (анти-дрейф)
 Перед тем как orchestrator создаст новый план, scribe проверяет:
@@ -69,6 +77,7 @@ payload:
   recorded:
     - CURRENT_STATE.md: updated
     - DECISIONS.md: [appended | no changes]
+    - kg/events.jsonl: [N событий | no changes]
 ```
 
 ### Формат отчёта

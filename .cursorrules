@@ -23,6 +23,8 @@
     scribe.md                     Composer 2.5 Fast — docs, журнал действий, Gold Standard
     extractor.md                  Claude Opus 5.5 — typed extraction из текста СМК
   hooks/                          отключены (D-036); safety_guard — TASK-019 P3
+  kg/events.jsonl                 журнал действий агентов (lite KG)
+  state/kg.py                     CLI журнала: add | query | export | import-docs
   commands/
     start.md                      /start — первая команда orchestrator'у
   plans/

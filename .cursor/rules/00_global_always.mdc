@@ -113,6 +113,6 @@ tests/fixtures/gold/** → scribe only
 ## Source of truth
 - Архитектура: `docs/Architecture_v2.1.md`
 - Решения: `docs/DECISIONS.md` (append-only)
-- Состояние: `docs/CURRENT_STATE.md` (журнал действий агентов — lite KG, TASK-019 P2)
+- Состояние: `docs/CURRENT_STATE.md`; журнал действий и результатов агентов — `.cursor/kg/events.jsonl` (CLI `.cursor/state/kg.py`, только дописывание; тексты решений — в DECISIONS.md, журнал ссылается на D-NNN)
 - Процесс: Organizational Knowledge Graph (SSOT, D-001)
 - Правила: `.cursor/rules/*.mdc`

@@ -67,6 +67,7 @@ output
 # Archive (исключить полностью для публичного репозитория)
 archive/*
 !archive/legacy_2026/
+archive/legacy_2026/**/*.sqlite
 
 # Temporary files and logs
 *.log
