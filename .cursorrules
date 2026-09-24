@@ -22,7 +22,8 @@
     validator.md                  GPT-5.6 Sol — pre/post gate (другое семейство, чем coder)
     scribe.md                     Composer 2.5 Fast — docs, журнал действий, Gold Standard
     extractor.md                  Claude Opus 5.5 — typed extraction из текста СМК
-  hooks/                          отключены (D-036); safety_guard — TASK-019 P3
+  hooks.json                      включён только safety_guard (TASK-019 P3); старые хуки dormant (D-036)
+  hooks/safety_guard.py           стоп: rm -rf, git reset --hard/push --force/clean -f/сброс рабочей копии, запись .env*
   kg/events.jsonl                 журнал действий агентов (lite KG)
   state/kg.py                     CLI журнала: add | query | export | import-docs
   commands/

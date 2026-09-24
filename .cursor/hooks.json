@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": "python3 .cursor/hooks/safety_guard.py",
+        "matcher": "Shell|ApplyPatch|Write|StrReplace|EditNotebook|Delete",
+        "failClosed": true
+      }
+    ]
+  }
+}

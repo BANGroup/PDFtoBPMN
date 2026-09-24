@@ -615,3 +615,29 @@ IATA-732 для задержек, которые невозможно увере
 **Замещает:** часть D-039, касающуюся Telegram-отчёта. D-039 в остальном остаётся в силе.
 **Отклонено:** группа Telegram (human попросил убрать, 23.09.2026); канал Mattermost вместо личных сообщений (human назвал конкретных получателей — только DM).
 **Нюанс:** ранее отправленные сообщения в группе Telegram удалить автоматически нельзя — `message_id` не сохранялись; удаление вручную.
+
+## D-041: Включён единственный хук safety_guard (стоп разрушительных действий); ролевые хуки D-036 остаются выключенными (24.09.2026)
+
+**Контекст:** D-036 отключил четыре enforcement-хука (handoff, ownership, block orchestrator code, record_stop), потому что они опознают агента через `CURSOR_AGENT_NAME`, которая не пробрасывается в Task-sub-agents (D-011). Enforcement остался soft через правила. При этом разрушительные shell- и patch-действия (удаление дерева, force-push, сброс рабочей копии, запись секретов в `.env*`) по-прежнему нужно останавливать на уровне Cursor — без привязки к роли агента.
+
+**Решение:**
+- Активен один хук: `.cursor/hooks.json` → `preToolUse`, matcher `Shell|ApplyPatch|Write|StrReplace|EditNotebook|Delete`, скрипт `.cursor/hooks/safety_guard.py`, **failClosed**.
+- Реализация перенесена из cube (адаптирована): `.cursor/hooks/safety_guard.py`, `hook_io.py`, `shell_parse.py`; тесты `tests/test_safety_guard.py`.
+- Четыре ролевых хука D-036 остаются в `.cursor/hooks/hooks.json.disabled` (dormant); D-036 **не отменяется** — D-041 уточняет: отключены только role-aware хуки; добавлен action-only сторож, совместимый с Task-sub-agents.
+- **Блокирует:** `rm -rf` (в т.ч. обёртки sudo/env/VAR=, `/bin/rm`); `git reset --hard`; `git push --force` / `--delete`; `git clean -f`; сброс рабочей копии (`git checkout -- .` / `-f`, `git restore` без `--staged`); запись `git config`; правку `.env*` и ключей через Write/StrReplace/Delete/ApplyPatch и через shell-редиректы (`>`, `>>`, `&>`, `>|`, `tee`, в т.ч. слитные формы).
+- **Разрешает:** обычный git (add/commit/push/mv/fetch, checkout ветки, `restore --staged`), `git -C`, чтение `.env`, данные в кавычках и тело heredoc (исправлен дефект cube: delimiter heredoc брался из маскированной строки).
+- **Сознательно не ловит** намеренный обход (`bash -c`, `$(...)`, `eval`, `xargs`, `find -delete`, `python -c`) — как в cube.
+- Отличия от cube: убрана ClickHouse-часть; добавлены сброс рабочей копии, git global options (`-C`/`-c`/`--git-dir`), env-обёртки, запись секрета через shell.
+
+**Следствия:**
+- Правку `.env*` и ключей выполняет **human**; отказ охранника = **стоп и вопрос human** (не обход синтаксисом).
+- Soft ownership/handoff из D-036 сохраняется; hard-stop только для разрушительных действий и записи секретов.
+
+**Альтернативы отклонены:**
+- Перенос остальных сторожей cube (pre_gate, pre_close, ssot, dispatch и т.п.) — тяжело, завязано на Agent KG cube, вне scope TASK-019 P3.
+- Включить обратно ролевые хуки D-036 без переписывания идентификации агента — по-прежнему несовместимо с Task-sub-agents.
+
+**Affected:**
+- `.cursor/hooks.json` — активен (только safety_guard).
+- `.cursor/hooks/hooks.json.disabled` — без изменений (dormant).
+- `.cursor/hooks/safety_guard.py`, `hook_io.py`, `shell_parse.py`, `tests/test_safety_guard.py`.

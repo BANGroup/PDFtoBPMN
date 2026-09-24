@@ -7,7 +7,7 @@
 
 ### Компоненты
 - ✅ **cursor_rules**: 7 .mdc файлов (v1 удалены, v2 синхронизированы с DECISIONS)
-- ⚠ **cursor_hooks**: hooks.json.disabled (D-036 — несовместимы с Task-sub-agents; скрипты сохранены как dormant)
+- ✅ **cursor_hooks**: активен единственный `safety_guard` (preToolUse, failClosed, D-041); ролевые хуки D-036 — `.cursor/hooks/hooks.json.disabled` (dormant)
 - ✅ **cursor_agents**: 5 агентов (orchestrator, coder, validator, scribe, extractor) — обновлены: checkpoint, fast-track, out-of-scope, validator 3 режима (D-019)
 - 🗄 **langgraph_state** (архивировано, TASK-019 P2): dev_graph + batch_graph — pip install OK, 6/6 тестов pass. `dev_graph.py`, `dev_state.sqlite`, `bootstrap.sh`, `tests/test_dev_graph.py` → `archive/legacy_2026/state_langgraph/`; `batch_graph.py` оставлен (заготовка пакетного конвейера); зависимость `langgraph` в `pyproject.toml` не тронута
 - ✅ **lite KG (журнал действий агентов)**: `.cursor/kg/events.jsonl` (только дописывание) + CLI `.cursor/state/kg.py` (`add` / `query` / `export changelog|state` / `import-docs`); `tests/test_kg.py` — 7 тестов (TASK-019 P2)
@@ -375,10 +375,12 @@ aggregation (APN 0399, опц.)`.
   - Исполнители: coder — Grok 4.7 (`grok-4.7-high-fast`), validator — GPT-5.6 Sol (`gpt-5.6-sol-high`), 2 итерации.
   - Находки validator (обе L3, исправлены в итерации 2; тесты сначала падали на старом коде): `add --ts 2026-99-99T99:99:99Z` принимался; `query --file` по файлу внутри папки-ссылки не находил событие.
   - Проверки: pytest tests — 21 passed; pyflakes чисто; validator PASS (итерация 2).
-- ⏳ **P3**: `safety_guard` — впереди.
+- ✅ **P3** (пока не закоммичено): `safety_guard` — перенос из cube, `.cursor/hooks.json` только этот хук; pytest 42 passed; validator PASS; отрицательный контроль в Cursor 3/3 deny без эффекта (D-041).
+  - Исполнители: coder — Grok 4.7 (`grok-4.7-high-fast`), 4 итерации; validator — GPT-5.6 Sol (`gpt-5.6-sol-high`), итог PASS.
+  - Находки validator (все L3, исправлены): сброс рабочей копии; ложный deny в кавычках/heredoc; `env -u … rm -rf`; `git -C … reset --hard`; редиректы в `.env` (раздельные и слитные).
 - ⏳ **P4**: навык `data-researcher` — впереди.
 
-**Известный пропуск источника (Rule 0, ⚠ GAP):** в `docs/DECISIONS.md` нет решения D-029 — 39 заголовков при последнем D-040; D-031 стоит после D-033. Не достраивается; в журнал импортированы только существующие 39.
+**Известный пропуск источника (Rule 0, ⚠ GAP):** в `docs/DECISIONS.md` нет решения D-029 — 40 заголовков при последнем D-041; D-031 стоит после D-033. Не достраивается; в журнал импортированы только существующие решения на момент импорта P2 (+ D-041 в тексте).
 
 ### Блокеры
 - Нет
@@ -403,3 +405,4 @@ aggregation (APN 0399, опц.)`.
 - H8: Scribe → Human (23.09.2026) — TASK-017 зафиксирован: D-039 добавлен в DECISIONS.md; ✅ bnd_sync в CURRENT_STATE.md; 13 тестов passed; карантин до 30.09.2026
 - H7→H8: Scribe (23.09.2026 12:20) — D-040 зафиксирован: Telegram → Mattermost (бот ДВК, DM, 3 получателя); DECISIONS.md D-040 добавлен; CURRENT_STATE.md bnd_sync и TASK-017 обновлены; 14 тестов passed
 - H7→H8: Scribe (23.09.2026) — TASK-019 P2 зафиксирован: 3 события в `.cursor/kg/events.jsonl` (2 finding L3, 1 change); ✅ lite KG в CURRENT_STATE.md; langgraph_state помечен архивированным; пропуск D-029 отмечен; DECISIONS.md без изменений
+- H7→H8: Scribe (24.09.2026) — TASK-019 P3 зафиксирован: D-041 в DECISIONS.md; cursor_hooks + блок TASK-019 в CURRENT_STATE.md; 8 событий KG (1 decision, 6 finding L3, 1 change → D-041); коммит не делался
