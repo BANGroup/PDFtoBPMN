@@ -59,7 +59,7 @@ import sys
 import time
 import urllib.parse
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -101,7 +101,13 @@ DOCS_DIR = CORPUS_ROOT / "documents"
 ARCHIVE_DIR = DOCS_DIR / "_archive"
 DL_STATE_PATH = CORPUS_ROOT / ".download-state.json"
 MANIFEST_PATH = CORPUS_ROOT / "manifest.json"
-QUARANTINE_DIR = REPO_ROOT / "data" / "bnd_sync" / "quarantine" / datetime.now().strftime("%Y%m%d")
+QUARANTINE_ROOT = REPO_ROOT / "data" / "bnd_sync" / "quarantine"
+QUARANTINE_DIR = QUARANTINE_ROOT / datetime.now().strftime("%Y%m%d")
+# Синк переименовывает файлы, добавляя к имени хэш, а старое имя шлёт в карантин,
+# поэтому каждую ночь туда падают дубликаты уже лежащих в корпусе документов.
+# Без срока годности это росло без предела: к 26.09.2026 накопилось 20 ГБ на
+# 10302 файла при корпусе в 9.4 ГБ. Неделя — запас на «хватились в понедельник».
+QUARANTINE_KEEP_DAYS = int(os.getenv("BND_QUARANTINE_KEEP_DAYS", "7"))
 
 HTTP_TIMEOUT = 180
 DOC_TIMEOUT = 90  # запрос метаданных /document: крупные карточки KEEP отдаёт ~40с
@@ -456,6 +462,36 @@ def quarantine(path: Path) -> int:
     except Exception as e:
         print(f"  WARN: карантин {path}: {e}")
         return 0
+
+
+def purge_old_quarantine() -> tuple[int, int]:
+    """Сносит папки карантина старше QUARANTINE_KEEP_DAYS дней.
+
+    Возвращает (снесено папок, освобождено байт). Ориентируемся на имя папки
+    (ГГГГММДД), а не на mtime: имя ставит сам синк, его никто не сдвинет.
+    """
+    if QUARANTINE_KEEP_DAYS <= 0 or not QUARANTINE_ROOT.is_dir():
+        return 0, 0
+    cutoff = datetime.now().date() - timedelta(days=QUARANTINE_KEEP_DAYS)
+    removed = freed = 0
+    for day_dir in sorted(QUARANTINE_ROOT.iterdir()):
+        if not day_dir.is_dir():
+            continue
+        try:
+            day = datetime.strptime(day_dir.name, "%Y%m%d").date()
+        except ValueError:
+            continue  # чужая папка — не наша забота
+        if day >= cutoff:
+            continue
+        try:
+            size = sum(p.stat().st_size for p in day_dir.rglob("*") if p.is_file())
+            shutil.rmtree(day_dir)
+        except Exception as e:
+            print(f"  WARN: чистка карантина {day_dir.name}: {e}")
+            continue
+        removed += 1
+        freed += size
+    return removed, freed
 
 
 def relocate_doc_dir(prev: dict, new_rel: str) -> tuple[int, int]:
@@ -925,6 +961,10 @@ def main() -> int:
         }
         save_json_atomic(DL_STATE_PATH, dl_state_new)
 
+    purged_dirs = purged_bytes = 0
+    if not args.dry_run:
+        purged_dirs, purged_bytes = purge_old_quarantine()
+
     print(f"\nГотово за {elapsed:.1f}s")
     print("=== CORPUS REPORT ===")
     print(f"mode: {'full' if args.full else 'incremental'}")
@@ -939,6 +979,8 @@ def main() -> int:
     print(f"archived: {archived}")
     print(f"relocated: {relocated}")
     print(f"quarantined: {quarantined}")
+    print(f"quarantine_purged_dirs: {purged_dirs}")
+    print(f"quarantine_purged_mb: {purged_bytes / 1024 / 1024:.1f}")
     print(f"external_skipped: {external_skipped}")
     print(f"external_unreachable: {external_unreachable}")
     print(f"manifest_files: {manifest_file_count}")
