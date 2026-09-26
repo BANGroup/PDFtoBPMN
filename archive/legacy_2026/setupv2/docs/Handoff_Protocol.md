@@ -47,6 +47,7 @@ from: orchestrator
 to: validator
 payload:
   plan_file: .cursor/plans/TASK-NNN.md
+  validation_mode: pre     # pre | code | bpmn
   checks_requested:
     - plan_vs_decisions    # план не противоречит DECISIONS.md
     - scope_valid          # scope содержит НОВЫЙ/ИЗМЕНИТЬ/ТЕСТЫ
@@ -84,12 +85,13 @@ to: coder
 payload:
   plan_file: .cursor/plans/TASK-NNN.md
   pre_gate: PASS
+  iteration: "1/3"          # текущая / максимальная итерация
   instructions: |
     Реализуй строго по плану.
     Scope: [список файлов НОВЫЙ/ИЗМЕНИТЬ/ТЕСТЫ]
     Non-goals: [что НЕ трогать]
     При сдаче: формат H5.
-Запись в LangGraph: log_action("H4: plan dispatched to coder", agent="orchestrator")
+Запись в LangGraph: log_action("H4: plan dispatched to coder (iter 1/3)", agent="orchestrator")
 ```
 
 ### H5: Coder → Validator (сдача работы)
@@ -99,6 +101,7 @@ from: coder
 to: validator
 payload:
   task: TASK-NNN
+  iteration: "1/3"          # текущая / максимальная итерация
   files_changed:
     - path: scripts/ingestion/page_classifier.py
       action: NEW
@@ -114,6 +117,7 @@ payload:
     - scripts/ingestion/authority_resolver.py
   risks:
     - "page_classifier heuristic may need tuning on real scans"
+  validation_mode: code    # code | bpmn (orchestrator указывает при dispatch)
   checks_requested:
     - pytest_pass
     - schema_valid
@@ -161,7 +165,6 @@ payload:
     - update_component: {name: "ingestion", status: "in_progress", tests_pass: true}
     - log_decision: {title: "...", decision: "..."} # если были решения по ходу
     - update_current_state: true
-    - update_changelog: true
 Запись в LangGraph: log_action("H7: accepted, dispatched to scribe", agent="orchestrator")
 ```
 
@@ -174,7 +177,6 @@ payload:
   recorded:
     - dev_state.sqlite: updated
     - CURRENT_STATE.md: updated
-    - changelog.md: entry added
     - DECISIONS.md: [appended | no changes]
 Запись в LangGraph: log_action("H8: state recorded", agent="scribe")
 ```
@@ -185,6 +187,7 @@ payload:
 
 **Статус:** DONE ✅
 **Фаза:** [текущая]
+**Итерации:** 1/3
 
 ### Что сделано
 - [файл]: [описание изменения]
@@ -236,12 +239,15 @@ git add -A && git commit -m "TASK-NNN: [описание]"
 
 ---
 
-## 4. Retry и escalation
+## 4. Retry, escalation и checkpoint
+
+### Retry
 
 ```
 Post-gate FAIL, retry 1/3:
-  H6 result = FAIL → orchestrator → H4' → coder fixes → H5' → validator
+  H6 result = FAIL → orchestrator → checkpoint → H4' → coder fixes → H5' → validator
   Каждый retry записывается: log_action("H5': retry 1 submitted")
+  iteration в H4'/H5' обновляется: "2/3", "3/3"
 
 Post-gate FAIL, retry 3/3:
   H6 result = FAIL, retry_count=3 → BLOCK
@@ -252,9 +258,96 @@ Pre-gate FAIL:
   Max 2 rewrites. На 3-й → BLOCK → Human.
 ```
 
+### Checkpoint (контрольная точка)
+
+Orchestrator ОБЯЗАН выполнить checkpoint перед каждым retry (H4' и далее).
+Формат — мини-артефакт в теле handoff:
+
+```yaml
+checkpoint:
+  goal: "Исходная цель задачи (из плана)"
+  current_state: "Факт: что сделано, что сломано"
+  drift: false | true       # отклонение от цели
+  drift_description: ""     # если drift=true — что именно
+  decision: continue | adjust_scope | escalate
+```
+
+Checkpoint записывается в LangGraph:
+```python
+log_action("checkpoint: iter 2/3, drift=false, decision=continue", agent="orchestrator")
+```
+
+Если `drift=true` и `decision=adjust_scope` — orchestrator обязан пересогласовать scope с human перед продолжением.
+
 ---
 
-## 5. Git commit — только после H9
+## 5. Fast-track (укороченный цикл)
+
+Для мелких, очевидно безопасных изменений полный цикл H1-H9 избыточен.
+Orchestrator может объявить fast-track **в начале задачи**.
+
+### Критерии допуска
+
+Все условия должны выполняться одновременно:
+- Изменение ≤ 1 файла, ≤ 30 строк
+- Не затрагивает публичный API, архитектуру, зависимости
+- Не затрагивает `core/**` (модели данных — всегда полный цикл)
+- Нет новых решений (D-NNN)
+- Тип: рефакторинг, docstring, исправление опечатки, добавление unit-теста
+
+### Укороченная цепочка
+
+```
+Human → H1 → Orchestrator (объявляет fast-track) → H4 → Coder → H9 → Human
+```
+
+Пропускаются: H2/H3 (pre-gate), H5/H6 (post-gate), H7/H8 (scribe).
+Coder обязан запустить pytest самостоятельно и включить результат в H5-lite.
+
+### Формат H4 при fast-track
+
+```yaml
+handoff: H4_fast_track
+from: orchestrator
+to: coder
+payload:
+  plan_file: null            # план не создаётся
+  fast_track: true
+  iteration: "1/1"           # fast-track = одна попытка
+  reason: "docstring update, 5 lines, no logic change"
+  instructions: |
+    [краткое описание изменения]
+    Файл: [путь]
+    pytest обязателен.
+```
+
+### Формат H9 при fast-track
+
+```markdown
+## Доклад по TASK-NNN: [название] (fast-track)
+
+**Статус:** DONE ✅
+**Режим:** fast-track
+**Итерации:** 1/1
+
+### Что сделано
+- [файл]: [описание]
+
+### Тесты
+- pytest: [результат]
+
+### Готово к коммиту
+```
+
+### Ограничения
+
+- Если coder обнаружил, что изменение сложнее ожидаемого → **отмена fast-track**, эскалация к orchestrator, полный цикл.
+- Fast-track FAIL → полный цикл (не retry).
+- Orchestrator не может объявить fast-track для задач, затрагивающих несколько подсистем.
+
+---
+
+## 6. Git commit — только после H9
 
 ```
 H9 доклад содержит готовую команду:
@@ -270,7 +363,7 @@ Merge в main: по phase governance gate (human решение)
 
 ---
 
-## 6. Enforcement: Cursor Hooks
+## 7. Enforcement: Cursor Hooks
 
 Hooks — не рекомендация, а блокировка. Без записанного handoff'а агент
 не получит промпт. `.cursor/hooks.json` + `.cursor/hooks/*.py`.

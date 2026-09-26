@@ -1,0 +1,722 @@
+# Архитектура модуля Document to Context
+
+Полное техническое описание системы интеллектуального извлечения контекста из документов различных форматов (PDF, DOCX, XLSX).
+
+## 📋 Оглавление
+
+- [Обзор](#обзор)
+- [Архитектура системы](#архитектура-системы)
+- [Компоненты](#компоненты)
+- [Использование](#использование)
+- [Маршрутизация контента](#маршрутизация-контента)
+- [Модели данных](#модели-данных)
+- [Установка и настройка](#установка-и-настройка)
+
+---
+
+## 🎯 Обзор
+
+Модуль для интеллектуального извлечения и структурирования контента из документов различных форматов с комбинированным содержимым (текст + таблицы + графика).
+
+### Поддерживаемые форматы
+
+- 📄 **PDF** - с OCR для графики (DeepSeek-OCR/PaddleOCR)
+- 📝 **DOCX** - Word документы (структура, таблицы, изображения)
+- 📊 **XLSX** - Excel таблицы (данные, формулы, листы)
+
+### Основные возможности
+
+- **Сохранение структуры**: извлечение структуры документа с сохранением оригинального layout
+- **Поэтапная обработка**: сначала текст нативно, затем OCR для графики (PDF)
+- **Встраивание по координатам**: результаты OCR встраиваются в структуру по bbox (PDF)
+- **DeepSeek-OCR интеграция**: использование мощной OCR модели для распознавания графики (PDF)
+- **Унифицированный конвейер**: единый интерфейс обработки для всех форматов
+- **Промежуточное представление (IR)**: унифицированная структура данных с сохранением позиций
+- **Структурный анализ**: автоматическое определение заголовков, списков, таблиц
+- **Markdown выдача**: форматирование в структурированный Markdown с метаданными
+
+### Принципы разработки
+
+Модуль разработан с соблюдением принципов:
+
+- **SOLID**: Каждый компонент имеет одну ответственность
+- **KISS**: Простота реализации, понятные интерфейсы
+- **DRY**: Переиспользуемые компоненты, нет дублирования
+
+---
+
+## 📦 Архитектура системы
+
+### Диаграмма потока данных (3-уровневая архитектура)
+
+```
+                    ┌─────────────────────────┐
+                    │ DocumentToContext       │
+                    │ Pipeline                │
+                    │ (document_pipeline.py)  │
+                    └───────────┬─────────────┘
+                                ↓
+                    Автоопределение формата
+                                ↓
+        ┌───────────────────────┼───────────────────────┐
+        ↓                       ↓                       ↓
+┌───────────────┐      ┌───────────────┐      ┌───────────────┐
+│ PDFExtractor  │      │ DOCXExtractor │      │ XLSXExtractor │
+│ (PDF files)   │      │ (Word docs)   │      │ (Excel files) │
+└───────┬───────┘      └───────┬───────┘      └───────┬───────┘
+        │                      │                      │
+        ↓                      ↓                      ↓
+PDF: NativeExtractor    DOCX: python-docx    XLSX: openpyxl
+     + OCRClient              paragraphs           sheets/formulas
+     + StructurePreserver     + tables             + cells
+                              + images
+        │                      │                      │
+        └──────────────────────┼──────────────────────┘
+                               ↓
+                    Унифицированный формат
+                    (text_blocks, table_blocks,
+                     image_blocks)
+                               ↓
+                          IRBuilder
+                    (промежуточное представление)
+                               ↓
+                      StructureAnalyzer
+                    (анализ структуры)
+                               ↓
+                       MarkdownFormatter
+                               ↓
+                         Markdown Output
+```
+
+**Ключевые принципы:**
+
+1. **Format-Specific Extractors** (Уровень 1):
+   - Каждый формат имеет свой экстрактор (PDFExtractor, DOCXExtractor, XLSXExtractor)
+   - Наследуются от `BaseExtractor` (единый интерфейс)
+   - Возвращают унифицированную структуру данных
+
+2. **Unified Document Processor** (Уровень 2):
+   - `DocumentToContextPipeline` автоматически определяет формат
+   - Выбирает подходящий экстрактор
+   - Преобразует в промежуточное представление (IR)
+
+3. **Multi-Document Process Builder** (Уровень 3):
+   - `ProcessBuilder` объединяет несколько `_OCR.md` файлов
+   - Создает единый процесс (RACI, Pipeline, BPMN)
+
+**PDF специфика:** Структура извлекается нативно, затем графика распознается через OCR и встраивается обратно по координатам (bbox).
+
+### Структура модуля
+
+```
+pdf_to_context/
+├── __init__.py                 # Экспорт пайплайнов
+├── pipeline.py                 # PDFToContextPipeline (legacy, PDF only)
+├── document_pipeline.py        # 🆕 DocumentToContextPipeline (unified, все форматы)
+├── process_builder.py          # 🆕 ProcessBuilder (объединение документов)
+│
+├── core/                       # Ядро системы (PDF специфика)
+│   ├── parser.py              # PDFParser (PyMuPDF)
+│   ├── analyzer.py            # PageAnalyzer
+│   └── structure_preserver.py # StructurePreserver (встраивание OCR)
+│
+├── extractors/                 # Извлечение контента (multi-format)
+│   ├── base_extractor.py      # 🆕 BaseExtractor (абстрактный класс)
+│   ├── pdf_extractor.py       # 🆕 PDFExtractor (обёртка над NativeExtractor)
+│   ├── docx_extractor.py      # 🆕 DOCXExtractor (python-docx)
+│   ├── xlsx_extractor.py      # 🆕 XLSXExtractor (openpyxl)
+│   ├── native_extractor.py    # Native extraction PDF (структура + текст)
+│   └── ocr_client.py          # HTTP клиент OCR (графика для PDF)
+│
+├── ir/                        # Промежуточное представление
+│   ├── models.py              # IR, IRBlock, IRRelation, DocumentMetadata
+│   ├── builder.py             # IRBuilder (унифицированный для всех форматов)
+│   └── structure_analyzer.py  # StructureAnalyzer
+│
+├── output/                    # Форматирование вывода
+│   └── markdown_formatter.py  # MarkdownFormatter
+│
+├── models/                    # Модели данных
+│   └── data_models.py         # BBox, TextBlock, TableBlock, etc.
+│
+└── ocr_service/               # DeepSeek-OCR микросервис
+    ├── app.py                 # FastAPI приложение
+    └── requirements.txt       # Зависимости (vLLM)
+```
+
+---
+
+## 🔧 Компоненты
+
+### Core (ядро системы)
+
+#### PDFParser
+- **Ответственность**: Управление PDF файлами
+- **Технология**: PyMuPDF (fitz)
+- **Функции**:
+  - Открытие/закрытие PDF документов
+  - Итерация по страницам
+  - Извлечение метаданных (title, author, dates)
+  - Context manager поддержка
+
+#### PageAnalyzer
+- **Ответственность**: Анализ характеристик страниц
+- **Функции**:
+  - Оценка плотности текста (токены)
+  - Определение типа layout (single/multi-column/complex/newspaper)
+  - Расчет покрытия графикой (% площади страницы)
+  - Подсчет изображений и векторной графики
+- **Эвристики**:
+  - Кластеризация текстовых блоков по X координатам
+  - Определение колонок (multi-column detection)
+  - Анализ bbox перекрытий
+
+#### StructurePreserver
+- **Ответственность**: Встраивание OCR результатов в исходную структуру
+- **Функции**:
+  - Получает структуру (текст + позиции графики)
+  - Отправляет графические элементы в OCR
+  - Встраивает результаты OCR по bbox обратно в структуру
+  - Сохраняет оригинальный порядок элементов документа
+- **Алгоритм**:
+  1. Принимает список блоков с текстом и "заглушками" для графики
+  2. Для каждой графики: OCR → получение контента
+  3. Замена "заглушки" на реальный контент по bbox
+  4. Сортировка всех блоков по позиции (page, Y, X)
+  5. Возврат полной структуры с сохранением layout
+
+### Extractors (извлечение контента)
+
+#### NativeExtractor
+- **Ответственность**: Извлечение всей структуры документа нативно
+- **Технологии**: PyMuPDF + pdfplumber
+- **Извлекает в первом проходе**:
+  - **Текстовые блоки** (с font info, bbox) - сразу полный текст
+  - **Позиции графики** (bbox, тип) - создаёт "заглушки" для последующего OCR
+  - **Таблицы** (через pdfplumber, если возможно нативно)
+- **Ключевая особенность**: 
+  - Создаёт полную структуру документа с placeholder'ами для графики
+  - Все элементы имеют bbox для сохранения позиций
+  - Возвращает упорядоченный список блоков по порядку чтения
+- **Возвращает**: Структуру с `TextBlock` (текст), `PlaceholderBlock` (графика), `TableBlock`
+
+#### OCRClient
+- **Ответственность**: HTTP взаимодействие с DeepSeek-OCR микросервисом
+- **HTTP API**:
+  - `POST /ocr/figure` - OCR отдельного графического элемента
+  - `GET /health` - health check
+- **Функции**:
+  - Конвертация регионов (по bbox) в base64
+  - Retry логика (3 попытки)
+  - Парсинг ответов OCR → распознанный контент
+  - Промпты для разных типов графики (диаграммы, формулы, таблицы)
+- **Режимы OCR**: автоматический выбор Base/Large в зависимости от размера элемента
+
+### IR (промежуточное представление)
+
+#### IR Models
+- **IR**: Главная структура документа
+  - `blocks`: List[IRBlock]
+  - `relations`: List[IRRelation]
+  - `document_metadata`: DocumentMetadata
+- **IRBlock**: Унифицированный блок контента
+  - `id`, `type`, `content`, `page`, `bbox`
+  - `source` ("native" | "ocr")
+  - `confidence` (для OCR: 0.0-1.0)
+  - `metadata`: Dict (font, colors, etc.)
+- **IRRelation**: Связь между блоками
+  - `type`: "reading_order", "caption_of", "nested_in", "reference"
+  - `from_id`, `to_id`
+- **DocumentMetadata**: Метаданные документа
+  - title, author, dates, processing_stats
+
+#### IRBuilder
+- **Ответственность**: Построение промежуточного представления
+- **Функции**:
+  - Конвертация блоков из разных источников в IRBlock
+  - Определение связей (reading_order по page/Y/X)
+  - Индексация блоков по ID и странице
+  - Генерация уникальных ID
+- **Алгоритм ID**: `{prefix}_{counter}_{uuid_short}`
+
+#### StructureAnalyzer
+- **Ответственность**: Анализ структуры документа
+- **Определяет**:
+  - Заголовки H1-H3 (по font size, bold, паттернам)
+  - Списки (маркированные/нумерованные)
+  - Иерархию разделов (parent_heading)
+  - Оглавление (TOC)
+- **Эвристики заголовков**:
+  - Font size > среднего * 1.2
+  - Жирный шрифт + короткий текст (< 100 символов)
+  - Паттерны: `^\d+\.`, `^\d+\.\d+`, `^[A-ZА-Я]+$`
+- **Эвристики списков**:
+  - Паттерны: `^[-•·]`, `^\d+\)`, `^[а-я]\)`
+
+### Output (форматирование вывода)
+
+#### MarkdownFormatter
+- **Ответственность**: Форматирование IR в Markdown
+- **Генерирует**:
+  - YAML frontmatter (метаданные + IR статистика)
+  - Оглавление с anchors и номерами страниц
+  - Заголовки H1-H6
+  - Параграфы (с bold/italic)
+  - Списки (маркированные/нумерованные)
+  - Таблицы (Markdown syntax)
+  - Изображения (base64 inline или ссылки)
+  - Маркеры страниц в комментариях
+- **Опции**:
+  - `include_frontmatter`: YAML frontmatter
+  - `include_toc`: Оглавление
+  - `include_page_numbers`: Номера страниц
+  - `max_image_size_kb`: Лимит размера изображений (500 KB)
+
+### OCR Service (DeepSeek-OCR микросервис)
+
+#### DeepSeek-OCR Microservice
+- **Технологии**: vLLM + FastAPI
+- **Модель**: `deepseek-ai/deepseek-ocr` (HuggingFace)
+- **Режимы**:
+  - Tiny: 64 vision tokens
+  - Small: 100 vision tokens
+  - Base: 256 vision tokens (рекомендуется)
+  - Large: 400 vision tokens
+  - Gundam: Dynamic tiles
+- **API**:
+  - `POST /ocr/page`: OCR страницы → Markdown + blocks
+  - `POST /ocr/figure`: OCR фигуры → описание
+  - `GET /health`: Проверка доступности
+- **Особенности**:
+  - Stub-режим (работает без vLLM для тестирования)
+  - Custom logits processor (NGramPerReqLogitsProcessor)
+  - Парсинг Markdown → структурированные блоки
+
+### Pipeline (оркестратор)
+
+#### PDFToContextPipeline
+- **Ответственность**: Управление всем процессом обработки
+- **Последовательность** (новая архитектура):
+  1. Открытие PDF (PDFParser)
+  2. Извлечение метаданных
+  3. Для каждой страницы:
+     - Анализ (PageAnalyzer) - определение характеристик
+     - **Native extraction (NativeExtractor)** - извлечение ВСЕЙ структуры:
+       * Текстовые блоки с полным содержимым
+       * Placeholder'ы для графики (с bbox)
+       * Таблицы (если можно нативно)
+  4. **Обработка графики (StructurePreserver)**:
+     - Для каждого placeholder'а графики:
+       * OCR через OCRClient
+       * Встраивание результата по bbox в структуру
+  5. Построение IR (IRBuilder) - из полной структуры
+  6. Анализ структуры (StructureAnalyzer)
+  7. Форматирование (MarkdownFormatter)
+  8. Сохранение (опционально)
+- **Статистика**: pages_processed, graphics_ocr, tables_extracted, errors
+
+---
+
+## 🚀 Использование
+
+### Базовое использование
+
+```python
+from pdf_to_context import PDFToContextPipeline
+
+# Инициализация пайплайна
+pipeline = PDFToContextPipeline(
+    ocr_base_url="http://localhost:8000",
+    prioritize_accuracy=True
+)
+
+# Обработка PDF → Markdown
+markdown = pipeline.process(
+    pdf_path="document.pdf",
+    output_path="output.md"
+)
+```
+
+### Продвинутое использование
+
+```python
+from pdf_to_context import PDFToContextPipeline
+from pdf_to_context.models.data_models import ContentType
+
+pipeline = PDFToContextPipeline(
+    ocr_base_url="http://localhost:8000",
+    prioritize_accuracy=True,
+    extract_images=True,
+    extract_drawings=True,
+    extract_tables=True,
+    include_frontmatter=True,
+    include_toc=True
+)
+
+# Получить промежуточное представление (IR)
+ir = pipeline.process_to_ir("document.pdf")
+
+# Анализ IR
+stats = ir.get_statistics()
+print(f"Всего блоков: {stats['total_blocks']}")
+print(f"Native: {stats['blocks_by_source']['native']}")
+print(f"OCR: {stats['blocks_by_source']['ocr']}")
+
+# Получить блоки определенного типа
+headings = ir.get_blocks_by_type(ContentType.HEADING)
+tables = ir.get_blocks_by_type(ContentType.TABLE)
+
+# Получить блоки со страницы
+page_1_blocks = ir.get_blocks_by_page(1)
+
+# Форматирование в Markdown
+from pdf_to_context.output import MarkdownFormatter
+
+formatter = MarkdownFormatter(
+    include_frontmatter=True,
+    include_toc=True
+)
+
+markdown = formatter.format(ir)
+formatter.save_to_file(ir, "output.md")
+```
+
+### Работа с отдельными компонентами
+
+```python
+from pdf_to_context.core import PDFParser, PageAnalyzer, ContentRouter
+from pdf_to_context.extractors import NativeExtractor
+
+# Парсинг PDF
+with PDFParser("document.pdf") as parser:
+    total_pages = parser.get_total_pages()
+    metadata = parser.extract_metadata()
+    
+    # Анализ страницы
+    analyzer = PageAnalyzer()
+    page = parser.get_page(0)
+    page_metadata = analyzer.analyze_page(page)
+    
+    print(f"Layout: {page_metadata.layout_type.value}")
+    print(f"Плотность текста: {page_metadata.text_density} токенов")
+    
+    # Маршрутизация
+    router = ContentRouter(prioritize_accuracy=True)
+    route_info = router.route_page(page, page_metadata)
+    
+    print(f"Решение: {route_info.decision.value}")
+    print(f"Обоснование: {route_info.reason}")
+    
+    # Native extraction
+    if route_info.decision == "native":
+        extractor = NativeExtractor()
+        content = extractor.extract_page(page, "document.pdf")
+```
+
+---
+
+## 📊 Алгоритм обработки (новая архитектура)
+
+### Поэтапная обработка с сохранением структуры
+
+#### Этап 1: Извлечение структуры (Native Extraction)
+
+**Всегда выполняется для всех документов:**
+1. **Открытие PDF** через PyMuPDF
+2. **Анализ страницы** (PageAnalyzer):
+   - Определение layout type
+   - Оценка плотности текста
+   - Подсчет графических элементов
+3. **Native extraction** (NativeExtractor):
+   - Извлечение ВСЕХ текстовых блоков с bbox
+   - Идентификация позиций графики (изображения, векторная графика)
+   - Извлечение таблиц (pdfplumber, если возможно)
+   - Создание упорядоченного списка блоков
+
+**Результат:** Структура документа с текстом и placeholder'ами для графики
+
+#### Этап 2: OCR графических элементов
+
+**Выполняется только для графики:**
+1. **Фильтрация** (StructurePreserver):
+   - Анализ placeholder'ов графики
+   - Фильтрация по размеру (мин. 1000 px²)
+2. **OCR обработка** (OCRClient):
+   - Вырезание региона по bbox
+   - Отправка в DeepSeek-OCR микросервис
+   - Получение распознанного контента
+3. **Встраивание результатов**:
+   - Замена placeholder'а на реальный контент
+   - Сохранение bbox и позиции
+   - Поддержание порядка блоков
+
+**Результат:** Полная структура с текстом + распознанной графикой
+
+#### Этап 3: Построение IR и форматирование
+
+1. **IRBuilder**: Создание промежуточного представления
+2. **StructureAnalyzer**: Анализ структуры (заголовки, списки)
+3. **MarkdownFormatter**: Форматирование с сохранением структуры
+
+### Режимы DeepSeek-OCR (для графики)
+
+| Режим | Vision Tokens | Text Tokens | Применение |
+|-------|---------------|-------------|------------|
+| Tiny | 64 | < 500 | Простые страницы с минимальным текстом |
+| Small | 100 | < 1000 | Средние страницы, базовая структура |
+| **Base** | **256** | **< 2500** | **Стандартные страницы (рекомендуется)** |
+| Large | 400 | < 5000 | Плотные страницы, сложные таблицы |
+| Gundam | Dynamic | > 5000 | Газеты, постеры, сверхплотные страницы |
+
+**Выбор режима (при `prioritize_accuracy=True`):**
+- До 1000 токенов → Base (вместо Small/Tiny)
+- 1000-2500 токенов → Base
+- 2500-5000 токенов → Large
+- Больше 5000 токенов → Gundam
+- Газетный layout → всегда Gundam
+
+---
+
+## 💾 Модели данных
+
+### Базовые модели
+
+```python
+@dataclass
+class BBox:
+    """Координаты элемента на странице"""
+    x0: float  # Левый край
+    y0: float  # Нижний край (PDF система координат)
+    x1: float  # Правый край
+    y1: float  # Верхний край
+
+@dataclass
+class TextBlock:
+    """Текстовый блок (native)"""
+    bbox: BBox
+    text: str
+    page_num: int
+    font_name: Optional[str]
+    font_size: Optional[float]
+    is_bold: bool
+    is_italic: bool
+    metadata: Dict[str, Any]
+
+@dataclass
+class ImageBlock:
+    """Растровое изображение (native)"""
+    bbox: BBox
+    image_data: bytes
+    format: str  # 'png', 'jpeg'
+    page_num: int
+    width: Optional[int]
+    height: Optional[int]
+
+@dataclass
+class OCRBlock:
+    """Блок из OCR"""
+    id: str
+    type: ContentType
+    content: str  # Markdown или HTML
+    bbox: BBox
+    page_num: int
+    confidence: float  # 0.0 - 1.0
+    source: str = "ocr"
+```
+
+### IR модели
+
+```python
+@dataclass
+class IRBlock:
+    """Унифицированный блок в IR"""
+    id: str
+    type: ContentType
+    content: str
+    page: int
+    bbox: BBox
+    source: str  # "native" | "ocr"
+    confidence: Optional[float]
+    metadata: Dict[str, Any]
+
+@dataclass
+class IR:
+    """Промежуточное представление документа"""
+    blocks: List[IRBlock]
+    relations: List[IRRelation]
+    document_metadata: DocumentMetadata
+```
+
+### Enums
+
+```python
+class ContentType(str, Enum):
+    TEXT = "text"
+    IMAGE = "image"
+    VECTOR = "vector"
+    TABLE = "table"
+    HEADING = "heading"
+    PARAGRAPH = "paragraph"
+    LIST = "list"
+    FIGURE = "figure"
+
+class LayoutType(str, Enum):
+    SINGLE_COLUMN = "single_column"
+    MULTI_COLUMN = "multi_column"
+    COMPLEX = "complex"
+    NEWSPAPER = "newspaper"
+
+class RouteDecision(str, Enum):
+    NATIVE = "native"
+    OCR = "ocr"
+    HYBRID = "hybrid"
+
+class OCRMode(str, Enum):
+    TINY = "Tiny"
+    SMALL = "Small"
+    BASE = "Base"
+    LARGE = "Large"
+    GUNDAM = "Gundam"
+```
+
+---
+
+## ⚙️ Установка и настройка
+
+### Основной модуль
+
+```bash
+# Установка зависимостей
+pip install -r requirements.txt
+
+# Зависимости:
+# - PyMuPDF >= 1.23.0 (fitz)
+# - pdfplumber >= 0.10.0
+# - Pillow >= 10.0.0
+# - requests >= 2.31.0
+# - PyYAML >= 6.0.1
+```
+
+### OCR микросервис
+
+```bash
+cd pdf_to_context/ocr_service
+pip install -r requirements.txt
+
+# Зависимости:
+# - vllm >= 0.3.0
+# - fastapi >= 0.104.0
+# - uvicorn >= 0.24.0
+# - pydantic >= 2.5.0
+# - Pillow >= 10.0.0
+
+# Запуск
+python app.py
+
+# Или через uvicorn
+uvicorn pdf_to_context.ocr_service.app:app --host 0.0.0.0 --port 8000
+```
+
+### Тестирование
+
+```python
+# Проверка здоровья пайплайна
+from pdf_to_context import PDFToContextPipeline
+
+pipeline = PDFToContextPipeline()
+health = pipeline.health_check()
+
+print(health)
+# {
+#   "ocr_service": True,
+#   "components": {
+#     "parser": "ready",
+#     "analyzer": "ready",
+#     "router": "ready",
+#     "native_extractor": "ready",
+#     "ocr_client": "ready",
+#     "ir_builder": "ready",
+#     "structure_analyzer": "ready",
+#     "markdown_formatter": "ready"
+#   }
+# }
+```
+
+---
+
+## 📝 Формат вывода (Markdown)
+
+Выходной Markdown включает:
+
+```markdown
+---
+title: Document Title
+author: Author Name
+source: path/to/document.pdf
+pages: 10
+processed: 2025-10-28 12:00:00
+ir_statistics:
+  total_blocks: 150
+  native_blocks: 120
+  ocr_blocks: 30
+  blocks_by_type:
+    heading: 15
+    paragraph: 100
+    table: 5
+    image: 10
+---
+
+## Оглавление
+
+- [Раздел 1](#раздел-1) *(стр. 1)*
+  - [Подраздел 1.1](#подраздел-11) *(стр. 2)*
+- [Раздел 2](#раздел-2) *(стр. 5)*
+
+<!-- Страница 1 -->
+
+# Раздел 1 {#раздел-1}
+
+Параграф текста с **жирным** и *курсивным* форматированием.
+
+- Элемент списка 1
+- Элемент списка 2
+  - Вложенный элемент
+
+<!-- Страница 2 -->
+
+## Подраздел 1.1 {#подраздел-11}
+
+| Заголовок 1 | Заголовок 2 | Заголовок 3 |
+| --- | --- | --- |
+| Ячейка 1 | Ячейка 2 | Ячейка 3 |
+| Данные 1 | Данные 2 | Данные 3 |
+
+![Image from page 2](data:image/png;base64,iVBORw0KGgo...)
+
+*[Векторная графика: диаграмма]*
+```
+
+---
+
+## 🔮 Roadmap
+
+- [ ] Поддержка DOCX и XLSX форматов
+- [ ] Построение BPMN схем из процессных описаний
+- [ ] Улучшенное определение связей между блоками (caption_of, reference)
+- [ ] Кэширование результатов OCR
+- [ ] Batch processing для множественных документов
+- [ ] Web UI для визуализации IR
+- [ ] Docker-образы для OCR микросервиса
+- [ ] Prometheus метрики
+- [ ] Поддержка streaming для больших документов
+
+---
+
+## 📄 Лицензия
+
+MIT
+
+## 👥 Авторы
+
+Open Source Project
+
