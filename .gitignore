@@ -80,8 +80,7 @@ test_ocr_simple.png
 input_data/test_ocr.png
 
 # Временные тестовые скрипты (в корне)
-test_*.py
-!scripts/utils/test_*.py  # Разрешить утилиты в scripts/utils/
+/test_*.py
 
 
 # Дополнительные рабочие папки
