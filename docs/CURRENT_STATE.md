@@ -20,6 +20,7 @@
 - ✅ **mcp_jira**: Jira Server (jira.utair.ru)
 - ✅ **mcp_singularity**: Singularity App
 - ✅ **bnd_sync**: ночная сборка корпуса БНД (cron 01:00, `scripts/ingestion/bnd_sync/`, логи `data/bnd_sync/logs/`); отчёт — бот ДВК (Mattermost DM, 3 получателя: budnik_an, lavrova_tv, bachurina_iv)
+- ✅ **skills/data-researcher** (TASK-019 P4): навык исследования НД только на чтение — локальный корпус, Domino (keep-bnd / keep), Jira, Superset, DWH; отчёт с Rule 0 (расхождения / пробелы / счётчик); Business Studio — ⚠ GAP (коннектора нет)
 
 ### Сделано
 - Bootstrap v2.1 выполнен (ветка v2-graphrag, 2 коммита)
@@ -345,7 +346,8 @@ aggregation (APN 0399, опц.)`.
 - Зеркало: 6 751 файл / 8,9 ГБ в manifest (9,4 ГБ на диске; было 25 ГБ).
 - Карантин `data/bnd_sync/quarantine/20260923/` — 7 048 файлов (~16 ГБ): дубли, старые версии, папки после смены даты изменения/переклассификации, два `*.bloated` по 2,4 ГБ.
   - ⚠ В карантине — единственные копии вложений 16 временных изменений РПП (TR MEL), которые Domino сейчас отдаёт без вложения.
-  - Удаление карантина — **не раньше 30.09.2026, только по команде human**.
+  - Карантин bnd_sync: **автоочистка через 7 дней** (коммит 60af1f2, решение human 26.09); `.cursorignore` убирает тяжёлые каталоги из индекса Cursor.
+  - ⚠ В карантине по-прежнему могут быть единственные копии отдельных вложений (см. TR MEL выше) — до автоочистки учитывать при расследованиях.
 
 **Структура:**
 - `scripts/ingestion/bnd_sync/` — `run_nightly.py`, `cron_nightly.sh`, `build_doc_catalog.py`, `build_rpp_catalog.py`, `download_bnd_corpus.py`, `tg_report.py`.
@@ -357,7 +359,7 @@ aggregation (APN 0399, опц.)`.
 **Тесты:** `tests/test_bnd_sync.py` — 14 passed. ⚠ Файл попадает под `.gitignore` (`test_*.py`) — при коммите нужен `git add -f`.
 
 **Следующие шаги:**
-- Контроль 7 ночных прогонов (до 30.09.2026); при всех зелёных — разрешить удаление карантина.
+- Контроль ночных прогонов и политики карантина (7 дней, 60af1f2).
 - P5 — удаление старых скриптов из todo (коммит делает human): `tools/cron_catalog_rebuild.sh`, `tools/catalog_daily_rebuild.py`, `lotus-mcp/build_doc_catalog.py`, `build_rpp_catalog.py`, `download_bnd_corpus.py`.
 - Подключить `data/bnd_corpus/manifest.json` как вход ingestion PDFtoBPMN (отдельная задача).
 
@@ -365,22 +367,33 @@ aggregation (APN 0399, опц.)`.
 
 **Решение:** D-039, D-040.
 
-### TASK-019 (23.09.2026) — лёгкая обвязка агентов + журнал действий агентов
+### TASK-019 (23.09.2026) — лёгкая обвязка агентов + журнал действий агентов — **завершена**
 
 - ✅ **P1** (d618549): уровни риска и базовые принципы вместо цепочки H1–H9; актуальные модели агентов.
-- ✅ **P2** (коммит будет, пока не закоммичено): журнал действий агентов (lite KG) вместо LangGraph-графа.
+- ✅ **P2** (1021c88): журнал действий агентов (lite KG) вместо LangGraph-графа.
   - `.cursor/kg/events.jsonl` + CLI `.cursor/state/kg.py` (`add` / `query` / `export changelog|state` / `import-docs`); `tests/test_kg.py` — 7 тестов.
   - Импорт: 39 решений из `docs/DECISIONS.md`, 13 планов из `.cursor/plans/`, события TASK-017/018/019.
   - LangGraph-граф разработки (`dev_graph.py`, `dev_state.sqlite`, `bootstrap.sh`, `tests/test_dev_graph.py`) → `archive/legacy_2026/state_langgraph/`; `batch_graph.py` оставлен; `langgraph` в `pyproject.toml` не тронут.
   - Исполнители: coder — Grok 4.7 (`grok-4.7-high-fast`), validator — GPT-5.6 Sol (`gpt-5.6-sol-high`), 2 итерации.
   - Находки validator (обе L3, исправлены в итерации 2; тесты сначала падали на старом коде): `add --ts 2026-99-99T99:99:99Z` принимался; `query --file` по файлу внутри папки-ссылки не находил событие.
   - Проверки: pytest tests — 21 passed; pyflakes чисто; validator PASS (итерация 2).
-- ✅ **P3** (пока не закоммичено): `safety_guard` — перенос из cube, `.cursor/hooks.json` только этот хук; pytest 42 passed; validator PASS; отрицательный контроль в Cursor 3/3 deny без эффекта (D-041).
+- ✅ **P3** (7f73fd6): `safety_guard` — перенос из cube, `.cursor/hooks.json` только этот хук; pytest 42 passed; validator PASS; отрицательный контроль в Cursor 3/3 deny без эффекта (D-041).
   - Исполнители: coder — Grok 4.7 (`grok-4.7-high-fast`), 4 итерации; validator — GPT-5.6 Sol (`gpt-5.6-sol-high`), итог PASS.
   - Находки validator (все L3, исправлены): сброс рабочей копии; ложный deny в кавычках/heredoc; `env -u … rm -rf`; `git -C … reset --hard`; редиректы в `.env` (раздельные и слитные).
-- ⏳ **P4**: навык `data-researcher` — впереди.
+- ✅ **P4** (коммит будет): навык `.cursor/skills/data-researcher/` — исследование НД только на чтение (корпус → Domino db02/db01 через MCP, Jira, Superset, DWH); проба КД-РГ-110-05: 18 фактов, 5 пробелов, 2 low confidence; в навык внесены 9 уточнений по Domino/корпусу. Связанный коммит human: d69b215 (`.gitignore` `/test_*.py` в корне).
 
 **Известный пропуск источника (Rule 0, ⚠ GAP):** в `docs/DECISIONS.md` нет решения D-029 — 40 заголовков при последнем D-041; D-031 стоит после D-033. Не достраивается; в журнал импортированы только существующие решения на момент импорта P2 (+ D-041 в тексте).
+
+### Очередь (решение human)
+
+Находки исследования корпуса/каталога (не чинились; зафиксированы в lite KG как finding → TASK-017):
+
+1. **department** в каталоге/корпусе = `DocMainDepartmentName` (головное), а не исполнитель `DocDepartmentName` — finding L3, `build_doc_catalog.py`.
+2. Код процесса в каталоге латиницей (M1), в Domino кириллицей (М1); побайтово не проверено — finding L4, `build_doc_catalog.py`.
+3. PDF «эталон» помечен `scope current`, в `v_ImagesForDoc` — группа «Проект» (смысл групп не подтверждён) — finding L4, `build_doc_catalog.py`, `download_bnd_corpus.py`.
+4. В корпус не попадают действующие Word-вложения «Приказ» (основания ввода документа/изменений) — finding L3, `download_bnd_corpus.py`.
+
+**Вопрос human:** восстанавливать ли пропущенный **D-029** в `docs/DECISIONS.md` (исторический артефакт нумерации) или оставить только GAP-маркер в state?
 
 ### Блокеры
 - Нет
@@ -406,3 +419,4 @@ aggregation (APN 0399, опц.)`.
 - H7→H8: Scribe (23.09.2026 12:20) — D-040 зафиксирован: Telegram → Mattermost (бот ДВК, DM, 3 получателя); DECISIONS.md D-040 добавлен; CURRENT_STATE.md bnd_sync и TASK-017 обновлены; 14 тестов passed
 - H7→H8: Scribe (23.09.2026) — TASK-019 P2 зафиксирован: 3 события в `.cursor/kg/events.jsonl` (2 finding L3, 1 change); ✅ lite KG в CURRENT_STATE.md; langgraph_state помечен архивированным; пропуск D-029 отмечен; DECISIONS.md без изменений
 - H7→H8: Scribe (24.09.2026) — TASK-019 P3 зафиксирован: D-041 в DECISIONS.md; cursor_hooks + блок TASK-019 в CURRENT_STATE.md; 8 событий KG (1 decision, 6 finding L3, 1 change → D-041); коммит не делался
+- H7→H8: Scribe (27.09.2026) — TASK-019 закрыта (P4 + итог): 7 событий KG (2 change, 4 finding→TASK-017, 1 task done); CURRENT_STATE — skills/data-researcher, очередь human, карантин 7 дней; коммит не делался
