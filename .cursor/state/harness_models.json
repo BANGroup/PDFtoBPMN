@@ -1,0 +1,10 @@
+{
+  "_": "Модели ролей для двух сред. Правится только здесь, затем: python3 .cursor/state/harness_sync.py (TASK-020, D-042).",
+  "roles": {
+    "orchestrator": {"cursor": "inherit", "claude": null, "claude_id": "модель основного чата"},
+    "coder": {"cursor": "grok-4.7-high-fast", "claude": "sonnet", "claude_id": "claude-sonnet-5"},
+    "validator": {"cursor": "gpt-5.6-sol-high", "claude": "opus", "claude_id": "claude-opus-5-5", "claude_tools": "Read, Grep, Glob, Bash"},
+    "scribe": {"cursor": "composer-2.5-fast", "claude": "haiku", "claude_id": "claude-haiku-4-5"},
+    "extractor": {"cursor": "claude-opus-5-5-medium", "claude": "opus", "claude_id": "claude-opus-5-5"}
+  }
+}

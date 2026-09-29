@@ -115,3 +115,7 @@ docs/multiagent_template
 *_token
 *_TOKEN
 .huggingface_token
+
+# Claude Code: локальные файлы среды (TASK-020)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock

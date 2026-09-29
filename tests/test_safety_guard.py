@@ -312,5 +312,63 @@ class SafetyGuardTest(unittest.TestCase):
             self.assertShell("allow", command)
 
 
+class ClaudeCodeFormatTest(unittest.TestCase):
+    """Вход и ответ Claude Code (TASK-020): хук запускается с `--claude`."""
+
+    def _run(self, tool_name: str, tool_input: dict[str, object]) -> subprocess.CompletedProcess[str]:
+        payload = {"hook_event_name": "PreToolUse", "tool_name": tool_name, "tool_input": tool_input}
+        return subprocess.run(
+            [sys.executable, str(HOOK), "--claude"],
+            input=json.dumps(payload), text=True, capture_output=True, check=False,
+        )
+
+    def assertDenied(self, tool_name: str, tool_input: dict[str, object]) -> None:
+        result = self._run(tool_name, tool_input)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        out = json.loads(result.stdout)["hookSpecificOutput"]
+        self.assertEqual(out["hookEventName"], "PreToolUse")
+        self.assertEqual(out["permissionDecision"], "deny", f"{tool_name} {tool_input}")
+        self.assertTrue(out["permissionDecisionReason"])
+        self.assertNotIn("упал", out["permissionDecisionReason"])
+
+    def assertAllowed(self, tool_name: str, tool_input: dict[str, object]) -> None:
+        result = self._run(tool_name, tool_input)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # Пустой ответ: явное "allow" обошло бы подтверждения пользователя.
+        self.assertEqual(result.stdout, "", f"{tool_name} {tool_input}")
+
+    def test_shell_denied(self) -> None:
+        for command in ("rm -rf dir", "git reset --hard", "git push --force", "echo X>>.env"):
+            self.assertDenied("Bash", {"command": command, "description": "x"})
+
+    def test_shell_allowed(self) -> None:
+        for command in ("git status", "python3 -m pytest -q", 'rg -n "rm -rf" .'):
+            self.assertAllowed("Bash", {"command": command})
+
+    def test_secret_edits_denied(self) -> None:
+        for tool_name in ("Edit", "Write", "MultiEdit"):
+            self.assertDenied(tool_name, {"file_path": "/home/u/proj/.env"})
+        self.assertDenied("NotebookEdit", {"notebook_path": "data/.env.local"})
+
+    def test_edits_allowed(self) -> None:
+        for tool_name in ("Edit", "Write", "MultiEdit"):
+            self.assertAllowed(tool_name, {"file_path": "scripts/x.py"})
+        self.assertAllowed("Read", {"file_path": ".env"})
+
+    def test_crash_is_deny_not_silent(self) -> None:
+        code = (
+            "import sys; sys.argv.append('--claude'); sys.path.insert(0, sys.argv[1]);"
+            "from hook_io import run; run(lambda: 1 / 0, 'probe')"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code, str(HOOK.parent)],
+            text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        out = json.loads(result.stdout)["hookSpecificOutput"]
+        self.assertEqual(out["permissionDecision"], "deny")
+        self.assertIn("probe", out["permissionDecisionReason"])
+
+
 if __name__ == "__main__":
     unittest.main()

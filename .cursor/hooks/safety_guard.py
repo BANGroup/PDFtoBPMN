@@ -26,6 +26,8 @@ from shell_parse import ASSIGNMENT_RE, mask_quoted, split_segments, strip_heredo
 
 
 EDIT_TOOLS = {"applypatch", "write", "strreplace", "editnotebook", "delete"}
+# Инструменты правки Claude Code (TASK-020): Write уже выше, остальные — здесь.
+EDIT_TOOLS |= {"edit", "multiedit", "notebookedit"}
 SAFE_ENV_NAMES = {".env.example", ".env.sample", ".env.template"}
 DISPLAY_COMMANDS = {"echo", "printf", "write-host", "write-output"}
 WRAPPERS = {"command", "sudo"}
@@ -121,7 +123,7 @@ def _edit_paths(payload: dict[str, Any], tool_name: str) -> list[str]:
     value = _tool_input(payload)
     if not isinstance(value, dict):
         return []
-    for key in ("path", "file_path", "filePath", "target_notebook"):
+    for key in ("path", "file_path", "filePath", "target_notebook", "notebook_path"):
         path = value.get(key)
         if isinstance(path, str) and path.strip():
             return [_normalize_path(path)]
@@ -371,7 +373,7 @@ def main() -> None:
         payload = {}
 
     tool_name = _tool_name(payload)
-    if tool_name == "shell":
+    if tool_name in ("shell", "bash"):  # bash — Claude Code
         _handle_shell(payload)
         return
     if tool_name in EDIT_TOOLS:

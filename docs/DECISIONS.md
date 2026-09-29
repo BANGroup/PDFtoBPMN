@@ -641,3 +641,71 @@ IATA-732 для задержек, которые невозможно увере
 - `.cursor/hooks.json` — активен (только safety_guard).
 - `.cursor/hooks/hooks.json.disabled` — без изменений (dormant).
 - `.cursor/hooks/safety_guard.py`, `hook_io.py`, `shell_parse.py`, `tests/test_safety_guard.py`.
+
+## D-042: Общая обвязка агентов для Cursor и Claude Code; правит только Claude Code, синхронно в обоих наборах (29.09.2026)
+
+**Контекст:** D-041 установил один охранник `safety_guard.py` в Cursor. Параллельно human 29.09.2026 решил: обвязка (правила, роли, навыки, планы, журнал, охранник) должна быть общей для обеих сред — Cursor и Claude Code; каждая среда правит свои настройки моделей, но источник истины один.
+
+**Решение:**
+- **Общее** (SSOT, правит только Claude Code по команде human):
+  - `.cursor/rules/*.mdc` (ownership, governance, уровни риска, handoff, антипаттерны)
+  - `.cursor/agents/*.md` (тексты ролей: orchestrator, coder, validator, scribe, extractor)
+  - `.cursor/skills/*/` (навыки и описания)
+  - `.cursor/plans/TASK-*.md` (планы задач)
+  - `.cursor/kg/events.jsonl` (журнал действий агентов, append-only)
+  - `.cursor/hooks/safety_guard.py`, `hook_io.py`, `shell_parse.py` (охранник fail-closed)
+- **Свои у каждой среды**:
+  - Настройки: `.cursor/hooks.json` (Cursor) / `.claude/settings.json` (Claude Code)
+  - Таблица моделей `.cursor/state/harness_models.json`: ключи — роли, значения — пары (модель Cursor, модель Claude Code)
+  - Модели Claude Code: orchestrator — модель основного чата (не фиксирована), coder — `claude-sonnet-5`, validator — `claude-opus-5-5`, scribe — `claude-haiku-4-5`, extractor — `claude-opus-5-5`
+- **Синхронизация**:
+  - Генератор `.cursor/state/harness_sync.py` — пересобирает `.claude/agents/*.md` (заголовок Claude Code + тело ролей из Cursor), создаёт симлинки `.claude/skills/` на `.cursor/skills/`, обновляет поле `model` в карточках Cursor из таблицы моделей
+  - `harness_sync.py --check` → выход 1 при расхождении (gate для тестов)
+  - Тест `tests/test_harness_sync.py` падает, если стороны разошлись
+- **Процесс правки**:
+  1. Human даёт команду на правку обвязки (rules, agents, skills, plans)
+  2. Claude Code: правит в `.cursor/` (и Cursor видит изменения синхронно через SSOT)
+  3. Claude Code запускает `python3 .cursor/state/harness_sync.py` → пересобирает `.claude/agents`, симлинки, поле `model`
+  4. `tests/test_harness_sync.py` проверяет консистентность
+  5. Коммит и пуш — только по команде human
+- **Охранник** (D-041, расширен для Claude Code):
+  - Один скрипт `.cursor/hooks/safety_guard.py`, подключён в обеих средах
+  - В Cursor: `.cursor/hooks.json` → `preToolUse` → `safety_guard.py` (Cursor-формат input/output)
+  - В Claude Code: `.claude/settings.json` → `PreToolUse` → `safety_guard.py --claude` (адаптация на Claude Code-формат: вход `hook_event_name`/`Bash`/`Edit` → выход `hookSpecificOutput.permissionDecision`)
+  - Запрет: JSON `hookSpecificOutput.permissionDecision=deny` (в Claude Code)
+  - Разрешение: пустой ответ
+  - Исключение внутри охранника → `deny` с причиной (hook_io.run); поведение Claude Code при сбое запуска самого интерпретатора не проверялось
+  - Без флага `--claude` охранник работает в Cursor-формате; без флага — также запрещает входы с именами инструментов Claude (ужесточение для Cursor)
+- **Проверки** (post-gate):
+  - `pytest -q tests` — 48 passed (43 прежних + 5 новых на формат Claude Code); Cursor-формат: 127 входов побайтно как в HEAD; режимы Cursor и `--claude` — 163 прогона без расхождений; отрицательный контроль 29.09 в Claude Code и из субагента validator: `git reset --hard`, `git checkout -- .`, `rm -rf`, запись в `.env` остановлены, файлы целы
+  - `tests/test_harness_sync.py` — расхождение ловит
+- **Правила** (изменены по прямой команде human 29.09.2026 — D-042):
+  - `00_global_always.mdc`: ownership обвязки, правило синхронизации, исключение по семействам моделей (в Claude Code `low`/`medium` — validator Opus, `high` — обязательна проверка GPT-валидатором в Cursor)
+  - `project.mdc` и `.cursorrules`: упомянута вторая среда (Claude Code)
+  - D-041 не отменяется, уточняется (охранник один, работает в обеих средах)
+- **CLAUDE.md** (новый файл):
+  - Импорт `.cursor/rules/*.mdc` как источника истины
+  - Описание отличий Claude Code (модели, журнал с `--model`, охранник с `--claude`)
+  - Правило синхронизации (только Claude Code правит, `python3 .cursor/state/harness_sync.py`)
+
+**Альтернативы отклонены:**
+- Копировать правила в `.claude/rules/` (два источника истины, дрейф).
+- Отдельный охранник для Claude Code (две реализации одной политики).
+
+**Следствия:**
+- Обвязка агентов синхронна для обеих сред, управляется единой командой (Claude Code)
+- Расхождение отловляется тестом; ручные правки `.claude/agents/*.md` недопустимы
+- Модели каждой среды могут отличаться; в журнал пишется фактическая модель агента (`--model <id>`)
+- Для `high` уровня риска в Claude Code требуется перекрёстная проверка: GPT-валидатор в Cursor до закрытия задачи
+- Cursor при подключении `.claude/settings.json` вызывает охранник дважды (нативно + с `--claude`); оба вызова исправны, решения совпадают; дубль оставлен (нативный покрывает `ApplyPatch`/`Delete`)
+
+**Affected:**
+- `.cursor/state/harness_models.json` — таблица моделей ролей (новый файл)
+- `.cursor/state/harness_sync.py` — генератор обвязки (новый файл)
+- `.cursor/hooks/safety_guard.py`, `hook_io.py` — адаптация на `--claude`
+- `tests/test_harness_sync.py` — проверка синхронизации (новый файл, падает при расхождении)
+- `.claude/agents/*.md` — генерируются из `.cursor/agents/`
+- `.claude/settings.json` — подключение safety_guard с флагом `--claude`
+- `CLAUDE.md` — импорт правил, описание отличий (новый файл)
+- `.cursor/rules/00_global_always.mdc`, `project.mdc`, `.cursorrules` — ownership обвязки, исключение по семействам моделей, упоминание второй среды
+- `.gitignore` — локальные файлы Claude Code (`.claude/settings.local.json`, `.claude/scheduled_tasks.lock`)

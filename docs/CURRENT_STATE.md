@@ -384,6 +384,27 @@ aggregation (APN 0399, опц.)`.
 
 **Известный пропуск источника (Rule 0, ⚠ GAP):** в `docs/DECISIONS.md` нет решения D-029 — 40 заголовков при последнем D-041; D-031 стоит после D-033. Не достраивается; в журнал импортированы только существующие решения на момент импорта P2 (+ D-041 в тексте).
 
+### TASK-020 (29.09.2026) — общая обвязка Cursor + Claude Code — **завершена**
+
+**Цель:** обвязка агентов (правила, роли, навыки, планы, журнал, охранник) единая для обеих сред; каждая среда управляет своими моделями; SSOT — `.cursor/`, правит только Claude Code.
+
+**Этап:** закрыта human 29.09.2026; находки GPT post-gate исправлены
+
+**Компоненты:**
+- ✅ Таблица моделей `.cursor/state/harness_models.json` — роль → (модель Cursor, модель Claude)
+- ✅ Генератор `.cursor/state/harness_sync.py` — пересобирает `.claude/agents/*.md`, симлинки `.claude/skills/`, поле `model`
+- ✅ Тест `tests/test_harness_sync.py` — расхождение ловит
+- ✅ Охранник `safety_guard.py` + адаптация на `--claude` для Claude Code (формат ввода-вывода)
+- ✅ `CLAUDE.md` — импорт правил, описание отличий среды
+- ✅ Модели Claude: orchestrator — основной чат, coder — Sonnet 5, validator — Opus 5.5, scribe — Haiku 4.5, extractor — Opus 5.5
+- ✅ Правила обновлены: ownership обвязки, исключение по семействам моделей, синхронизация
+- ✅ `pytest -q tests` — 48 passed; в `test_safety_guard.py` 26 тестов (21 прежний + 5 на формат Claude Code); отрицательный контроль PASS (git reset/rm -rf/запись .env остановлены)
+- ℹ Cursor подхватывает `.claude/settings.json` (лог хуков: «Claude project config path»): охранник вызывается дважды (нативно и с `--claude`), оба исправны (код 0), решения совпадают; дубль оставлен — нативный вызов покрывает `ApplyPatch`/`Delete`
+
+**Решение:** D-042 (Общая обвязка).
+
+**Blockers:** нет. Ожидание повторной проверки в Cursor и коммита.
+
 ### Очередь (решение human)
 
 Находки исследования корпуса/каталога (не чинились; зафиксированы в lite KG как finding → TASK-017):
@@ -400,6 +421,7 @@ aggregation (APN 0399, опц.)`.
 
 ### Последние handoff'ы (актуальные)
 - H1: Human → Orchestrator (18.03.2026) — /start, валидация развёртывания
+- H8: Scribe (29.09.2026) — TASK-020 шаг 8: D-042 в DECISIONS.md, 5 событий KG, CURRENT_STATE обновлён; ждёт GPT-валидатора в Cursor
 - H9: Orchestrator → Human (18.03.2026) — TASK-001 completed, 11/11 PASS
 - H9: Orchestrator → Human (18.03.2026) — TASK-002 completed, EasyOCR winner (D-012)
 - H9: Orchestrator → Human (18.03.2026) — TASK-003 completed, Graph Population POC all PASS

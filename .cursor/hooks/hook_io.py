@@ -21,7 +21,22 @@ import traceback
 from typing import Any, Callable, Dict
 
 
+# Claude Code (TASK-020): хук запускается с `--claude`. Запрет — JSON
+# `hookSpecificOutput.permissionDecision = deny` с причиной (её видит модель);
+# разрешение — пустой ответ: явное "allow" в Claude Code обошло бы запросы
+# подтверждения пользователя.
+CLAUDE = "--claude" in sys.argv
+
+
 def emit(verdict: Dict[str, Any]) -> None:
+    if CLAUDE:
+        if verdict.get("permission") != "deny":
+            return
+        verdict = {"hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": verdict.get("agent_message") or verdict.get("user_message") or "запрещено",
+        }}
     buffer = getattr(sys.stdout, "buffer", None)
     if buffer is None:
         sys.stdout.write(json.dumps(verdict, ensure_ascii=True))
