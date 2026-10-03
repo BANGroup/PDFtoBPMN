@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Архитектура процессов СМК</title>
+<link rel="manifest" href="/manifest.json"><meta name="theme-color" content="#003594"><meta name="apple-mobile-web-app-capable" content="yes"><link rel="apple-touch-icon" href="/logo.png">
+<link rel="stylesheet" href="/static/portal-nav.css">
+<style>
+:root{
+  --utair-black:#111820;--utair-blue:#003594;--utair-blue-dark:#002570;--utair-white:#ffffff;
+  --utair-grey:#737576;--utair-light-blue:#7ca3dc;--utair-light-blue2:#b4c8e7;--utair-light-grey:#d0d3d4;
+  --utair-bg:#f4f5f7;
+  --bg:#f4f5f7;--surface:#fcfcfb;--ink:#111820;--ink2:#3d4550;--muted:#737576;--line:#d0d3d4;--link-ink:#9aa3ad;
+  --gM:#2f63c4;--gB:#d65a0f;--gV:#0c8a5c;--gGap:#9aa0a6;
+  --font:'Suisse Int\'l','Helvetica Neue',Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#111418;--surface:#1a1a19;--ink:#eef0f2;--ink2:#c9ced4;--muted:#9aa0a6;--line:#343a42;--link-ink:#5d6670;
+    --gM:#6b94e0;--gB:#d9773a;--gV:#33a077;--gGap:#7d848c;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#111418;--surface:#1a1a19;--ink:#eef0f2;--ink2:#c9ced4;--muted:#9aa0a6;--line:#343a42;--link-ink:#5d6670;
+  --gM:#6b94e0;--gB:#d9773a;--gV:#33a077;--gGap:#7d848c;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.5}
+.header{background:var(--utair-blue);color:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 24px}
+.header-left{display:flex;align-items:center;gap:12px;min-width:0}
+.header h1{font-size:18px;font-weight:400;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+main{max-width:1280px;margin:0 auto;padding:16px 24px 40px}
+h2{font-size:20px;font-weight:400;margin:32px 0 12px;color:var(--ink)}
+.lead{color:var(--ink2);max-width:900px;margin:8px 0 16px}
+.badge-draft{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:12px;color:var(--muted);margin-left:8px;vertical-align:middle}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:16px 0}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.tile .n{font-size:28px;line-height:1.1}
+.tile .l{font-size:13px;color:var(--muted)}
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:16px;margin:8px 0}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--ink2)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:14px;border-radius:3px;display:inline-block}
+.sw.gap{background:repeating-linear-gradient(45deg,var(--gGap) 0 2px,transparent 2px 5px);border:1px solid var(--gGap)}
+.themebtn{margin-left:auto;background:none;border:1px solid var(--line);color:var(--ink2);border-radius:6px;padding:4px 10px;cursor:pointer;font:inherit;font-size:13px}
+.chart-wrap{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px;overflow-x:auto}
+.colheads{display:grid;grid-template-columns:1fr 1fr 1fr;min-width:1180px;font-size:13px;color:var(--muted);padding:4px 8px 0}
+.colheads div:nth-child(2){text-align:center}.colheads div:nth-child(3){text-align:right}
+svg.sankey{display:block;min-width:1180px;width:100%;height:auto}
+svg .lnk{fill:none;stroke:var(--link-ink);stroke-opacity:.35;transition:stroke-opacity .15s}
+svg .lnk.hl{stroke-opacity:.85}
+svg .lnk.dim{stroke-opacity:.08}
+svg .nd rect{stroke:var(--surface);stroke-width:2px;rx:4px}
+svg .nd.dim{opacity:.25}
+svg text{fill:var(--ink);font-family:var(--font);font-size:12px}
+svg text .code{fill:var(--ink)}
+svg text.st{fill:var(--muted);font-size:11px}
+.tip{position:fixed;pointer-events:none;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:13px;max-width:380px;box-shadow:0 4px 16px rgba(0,0,0,.18);display:none;z-index:50}
+.tip b{font-weight:700}.tip .m{color:var(--muted)}
+.fixes{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
+.fix{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--utair-blue);border-radius:10px;padding:12px 14px}
+.fix h3{font-size:15px;font-weight:700;margin:0 0 6px}
+.fix p{margin:4px 0;color:var(--ink2);font-size:14px}
+.fix .w{color:var(--muted);font-size:13px}
+.fix a{color:var(--gM)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+th{background:var(--bg);font-weight:700}
+.tbl-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+details.rep{background:var(--surface);border:1px solid var(--line);border-radius:10px;margin:10px 0}
+details.rep>summary{cursor:pointer;padding:12px 14px;list-style:none}
+details.rep>summary::-webkit-details-marker{display:none}
+details.rep>summary b{font-size:15px}
+details.rep>summary .d{display:block;color:var(--muted);font-size:13px}
+details.rep>summary .dl{float:right;font-size:13px;color:var(--muted)}details.rep>summary .dl a{color:var(--gM)}
+.md{padding:4px 18px 18px;overflow-x:auto}
+.md h1{font-size:20px;font-weight:400}.md h2{font-size:18px}.md h3{font-size:16px}
+.md a{color:var(--gM);word-break:break-word}
+.md table{margin:8px 0}
+.md blockquote{border-left:3px solid var(--line);margin:8px 0;padding:2px 12px;color:var(--ink2)}
+.note{font-size:12px;color:var(--muted);margin-top:24px}
+.footer{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 24px;color:var(--muted);font-size:12px}
+@media (max-width:720px){
+  .header{padding:10px 16px}.header h1{font-size:16px}
+  main{padding:12px 16px 32px}
+  .fixes{grid-template-columns:1fr}
+}
+@media print{.themebtn,.header-right{display:none}details.rep{break-inside:avoid}}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-left">
+    <img src="/sign_white.png" alt="" style="height:28px;">
+    <h1>Архитектура процессов СМК</h1>
+  </div>
+  <div class="header-right">
+    <nav class="pn-header-nav" aria-label="Навигация по порталу">
+      <a class="pn-nav-link" href="/internal">← Закрытый раздел</a>
+      <a class="pn-nav-link" href="/">Главная</a>
+    </nav>
+  </div>
+</div>
+<nav class="pn-breadcrumbs" aria-label="Хлебные крошки">
+  <a class="pn-breadcrumbs__item" href="/">Главная</a>
+  <span class="pn-breadcrumbs__sep">›</span>
+  <a class="pn-breadcrumbs__item" href="/internal">Закрытый раздел</a>
+  <span class="pn-breadcrumbs__sep">›</span>
+  <span class="pn-breadcrumbs__current" aria-current="page">Архитектура процессов СМК</span>
+</nav>
+
+<main>
+  <h2 style="margin-top:8px">Процессы верхнего уровня: как есть → матрица службы качества → предложение <span class="badge-draft">черновик для обсуждения · __DATE__</span></h2>
+  <p class="lead">Слева — 14 процессов Руководства по качеству РК01-2026-08. В центре — новая архитектура службы качества (матрица 14.09.2026, кодов пока нет). Справа — предлагаемый каталог группы из 18 процессов по итогам исследования практик. Цвет узла — группа процессов, штриховка — пробел источника. Наведите на узел или связь, чтобы увидеть владельца и смысл перехода.</p>
+
+  <div class="tiles">
+    <div class="tile"><div class="n">14</div><div class="l">процессов в РК01-2026-08</div></div>
+    <div class="tile"><div class="n" id="tMx">—</div><div class="l">процессов верхнего уровня в матрице</div></div>
+    <div class="tile"><div class="n">18</div><div class="l">процессов в предложении</div></div>
+    <div class="tile"><div class="n">10</div><div class="l">кодов РК сохраняется</div></div>
+    <div class="tile"><div class="n">4</div><div class="l">кода выводятся (В2, Б5, Б6, Б7)</div></div>
+    <div class="tile"><div class="n">7</div><div class="l">новых кодов + В3 и М2 восстановлены</div></div>
+  </div>
+
+  <div class="toolbar">
+    <div class="legend" aria-label="Легенда">
+      <span><i class="sw" style="background:var(--gM)"></i>М — менеджмент</span>
+      <span><i class="sw" style="background:var(--gB)"></i>Б — основные</span>
+      <span><i class="sw" style="background:var(--gV)"></i>В — обеспечение</span>
+      <span><i class="sw gap"></i>пробел: нет в РК / нет в матрице</span>
+      <span class="m" style="color:var(--muted)">толщина связи не означает объём — каждая связь = одно соответствие</span>
+    </div>
+    <button class="themebtn" id="themeBtn" type="button">Тема</button>
+  </div>
+
+  <div class="chart-wrap" role="figure" aria-label="Санкей: соответствие процессов РК, матрицы и предложения">
+    <div class="colheads"><div>РК01-2026-08 (как есть)</div><div>Матрица службы качества 14.09.2026</div><div>Предложение (каталог группы)</div></div>
+    <svg class="sankey" id="sk" viewBox="0 0 1360 980" preserveAspectRatio="xMidYMin meet"></svg>
+  </div>
+  <div class="tip" id="tip" role="tooltip"></div>
+
+  <h2>Ключевые исправления к матрице</h2>
+  <div class="fixes" id="fixes"></div>
+
+  <h2>Таблица трансформации</h2>
+  <p class="lead">Табличный вид той же схемы — из отчёта, раздел «Таблица трансформации РК и матрицы в целевой каталог».</p>
+  <div class="tbl-wrap md" id="transform"></div>
+
+  <h2>Вопросы службе качества (дополнить заказ)</h2>
+  <div class="tbl-wrap md" id="questions"></div>
+
+  <h2>Вложенные отчёты</h2>
+  <div id="reports"></div>
+
+  <p class="note">Источники: РК01-2026-08 (п. 4.4.2, прил. 2), матрица службы качества 14.09.2026, КД-СТ-161-01, корпус БНД. Владельцы указаны должностями. Предложение — рекомендация исследования, а не утверждённая архитектура. Атрибуция APQC — в конце отчёта.</p>
+</main>
+<div class="footer"><span>Проект PDFtoBPMN · граф процессов СМК</span><img src="/utair_text.png" alt="Utair" style="height:16px;opacity:.4;"></div>
+
+<script>__D3__</script>
+<script>__D3SANKEY__</script>
+<script>__MARKED__</script>
+__MDBLOCKS__
+<script>
+const DATA = __DATA__;
+const $ = id => document.getElementById(id);
+const esc = s => { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; };
+
+/* ---------- тема ---------- */
+function setTheme(t){ if(t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+  try{ t ? localStorage.setItem('utair-ed-theme', t) : localStorage.removeItem('utair-ed-theme'); }catch(e){} }
+try{ const s = localStorage.getItem('utair-ed-theme'); if(s) document.documentElement.dataset.theme = s; }catch(e){}
+$('themeBtn').onclick = () => {
+  const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  setTheme(cur === 'dark' ? 'light' : 'dark'); };
+
+/* ---------- санкей ---------- */
+const GCOL = {'М':'var(--gM)','Б':'var(--gB)','В':'var(--gV)','gap':'var(--gGap)'};
+const nodes = [];
+DATA.rk.forEach(r => nodes.push({id:r[0], col:0, g:r[1], code:r[2], name:r[3], owner:r[4]}));
+DATA.mx.forEach(r => nodes.push({id:r[0], col:1, g:r[1], code:'', name:r[2], owner:r[3]}));
+DATA.tg.forEach(r => nodes.push({id:r[0], col:2, g:r[1], code:r[2], name:r[3], owner:r[4], st:r[5]}));
+$('tMx').textContent = DATA.mx.filter(r => r[1] !== 'gap').length;
+const links = DATA.links.map(l => ({source:l[0], target:l[1], value:1, note:l[2]}));
+
+const W = 1360, H = 980, M = {l:8, r:8, t:8, b:8};
+const sk = d3.sankey().nodeId(d => d.id).nodeWidth(14).nodePadding(10)
+  .nodeAlign(d => d.col).nodeSort(null)
+  .extent([[M.l + 290, M.t], [W - M.r - 340, H - M.b]]);
+const G = sk({nodes: nodes.map(d => Object.assign({}, d)), links: links.map(d => Object.assign({}, d))});
+const svg = d3.select('#sk');
+const defs = svg.append('defs');
+const pat = defs.append('pattern').attr('id','hatch').attr('width',5).attr('height',5).attr('patternUnits','userSpaceOnUse').attr('patternTransform','rotate(45)');
+pat.append('rect').attr('width',5).attr('height',5).attr('fill','var(--surface)');
+pat.append('rect').attr('width',2).attr('height',5).attr('fill','var(--gGap)');
+
+const lk = svg.append('g').selectAll('path').data(G.links).join('path')
+  .attr('class','lnk').attr('d', d3.sankeyLinkHorizontal())
+  .attr('stroke-width', d => Math.max(2, d.width));
+const nd = svg.append('g').selectAll('g').data(G.nodes).join('g').attr('class','nd');
+nd.append('rect').attr('x', d => d.x0).attr('y', d => d.y0)
+  .attr('width', d => d.x1 - d.x0).attr('height', d => Math.max(4, d.y1 - d.y0))
+  .attr('fill', d => d.g === 'gap' ? 'url(#hatch)' : GCOL[d.g])
+  .attr('stroke', d => d.g === 'gap' ? 'var(--gGap)' : null);
+const label = d => (d.code && d.code !== '—' ? d.code + ' ' : '') + d.name;
+const trunc = (s, n) => s.length > n ? s.slice(0, n - 1) + '…' : s;
+nd.append('text')
+  .attr('x', d => d.col === 2 ? d.x1 + 8 : (d.col === 0 ? d.x0 - 8 : d.x1 + 6))
+  .attr('y', d => (d.y0 + d.y1) / 2).attr('dy', '0.35em')
+  .attr('text-anchor', d => d.col === 0 ? 'end' : 'start')
+  .text(d => trunc(label(d), d.col === 1 ? 34 : (d.col === 0 ? 36 : 46)));
+nd.filter(d => d.col === 2).append('text').attr('class','st')
+  .attr('x', d => d.x1 + 8).attr('y', d => (d.y0 + d.y1) / 2 + 13).attr('dy','0.35em')
+  .text(d => DATA.status[d.st] || '');
+
+/* подсветка пути и подсказка */
+const tip = $('tip');
+function showTip(ev, html){ tip.innerHTML = html; tip.style.display = 'block';
+  const x = Math.min(ev.clientX + 14, innerWidth - tip.offsetWidth - 8), y = Math.min(ev.clientY + 14, innerHeight - tip.offsetHeight - 8);
+  tip.style.left = x + 'px'; tip.style.top = y + 'px'; }
+function hideTip(){ tip.style.display = 'none'; lk.classed('hl', false).classed('dim', false); nd.classed('dim', false); }
+function connected(n){
+  const L = new Set(), N = new Set([n]);
+  (function up(x){ x.targetLinks.forEach(l => { L.add(l); N.add(l.source); up(l.source); }); })(n);
+  (function dn(x){ x.sourceLinks.forEach(l => { L.add(l); N.add(l.target); dn(l.target); }); })(n);
+  return {L, N};
+}
+const colName = ['РК01-2026-08', 'Матрица 14.09.2026', 'Предложение'];
+nd.on('mousemove', (ev, d) => {
+  const c = connected(d);
+  lk.classed('hl', l => c.L.has(l)).classed('dim', l => !c.L.has(l));
+  nd.classed('dim', n => !c.N.has(n));
+  showTip(ev, '<div class="m">' + colName[d.col] + (d.g !== 'gap' ? ' · группа ' + d.g : '') + '</div><b>' + esc(label(d)) + '</b>'
+    + (d.owner && d.owner !== '—' ? '<div><span class="m">Владелец:</span> ' + esc(d.owner) + '</div>' : '')
+    + (d.st ? '<div><span class="m">Статус:</span> ' + esc(DATA.status[d.st]) + '</div>' : ''));
+}).on('mouseleave', hideTip);
+lk.on('mousemove', (ev, l) => {
+  lk.classed('hl', x => x === l).classed('dim', x => x !== l);
+  showTip(ev, '<b>' + esc(label(l.source)) + ' → ' + esc(label(l.target)) + '</b><div>' + esc(l.note) + '</div>');
+}).on('mouseleave', hideTip);
+
+/* ---------- отчёты ---------- */
+const md = id => document.getElementById(id).textContent;
+const REPMD = {}; DATA.reports.forEach(r => REPMD[r.id] = md('md-' + r.id));
+function section(text, startsWith){
+  const lines = text.split('\n'); const i = lines.findIndex(l => l.startsWith(startsWith));
+  if(i < 0) return '';
+  let j = lines.findIndex((l, k) => k > i && /^## /.test(l)); if(j < 0) j = lines.length;
+  return lines.slice(i + 1, j).join('\n');
+}
+$('transform').innerHTML = marked.parse(section(REPMD.report, '## Таблица трансформации'));
+$('questions').innerHTML = marked.parse(section(REPMD.report, '## Вопросы, которые нужно добавить'));
+
+const ANCH = {
+  'rep-structure': ['report', 'Предлагаемая эталонная структура'],
+  'rep-holding': ['report', 'Холдинг и юрлицо'],
+  'rep-trace': ['report', 'Трассировка к регуляторным'],
+  'rep-transform': ['report', 'Таблица трансформации'],
+  'req-4': ['request', '4. Роли вместо']
+};
+$('reports').innerHTML = DATA.reports.map(r =>
+  '<details class="rep" id="rep-' + r.id + '"><summary><span class="dl"><a href="#" data-dl="' + r.id + '" data-fmt="docx">Word</a> · <a href="#" data-dl="' + r.id + '" data-fmt="md">.md</a></span><b>' + esc(r.t) + '</b><span class="d">' + esc(r.d) + '</span></summary><div class="md" id="body-' + r.id + '"></div></details>').join('');
+DATA.reports.forEach(r => {
+  const box = $('body-' + r.id); box.innerHTML = marked.parse(REPMD[r.id]);
+  box.querySelectorAll('a[href^="http"]').forEach(a => { a.target = '_blank'; a.rel = 'noopener'; });
+});
+Object.entries(ANCH).forEach(([k, [rid, pre]]) => {
+  const h = [...$('body-' + rid).querySelectorAll('h1,h2,h3')].find(x => x.textContent.trim().startsWith(pre));
+  if(h) h.id = k;
+});
+document.addEventListener('click', ev => {
+  const a = ev.target.closest('a'); if(!a) return;
+  if(a.dataset.dl){ ev.preventDefault(); ev.stopPropagation();
+    const r = DATA.reports.find(x => x.id === a.dataset.dl);
+    const base = r.src.split('/').pop().replace(/\.md$/, '');
+    let blob, name;
+    if(a.dataset.fmt === 'docx'){
+      const bin = atob(DATA.docx[r.id]); const buf = new Uint8Array(bin.length);
+      for(let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}); name = base + '.docx';
+    } else { blob = new Blob([REPMD[r.id]], {type:'text/markdown;charset=utf-8'}); name = base + '.md'; }
+    const u = URL.createObjectURL(blob); const t = document.createElement('a');
+    t.href = u; t.download = name; t.click(); setTimeout(() => URL.revokeObjectURL(u), 1000); return; }
+  const h = a.getAttribute('href') || '';
+  if(h.startsWith('#') && ANCH[h.slice(1)]){ ev.preventDefault();
+    const [rid] = ANCH[h.slice(1)]; $('rep-' + rid).open = true;
+    const el = document.getElementById(h.slice(1)); (el || $('rep-' + rid)).scrollIntoView({behavior:'smooth', block:'start'}); }
+});
+
+/* ---------- исправления ---------- */
+$('fixes').innerHTML = DATA.fixes.map((f, i) =>
+  '<div class="fix"><h3>' + (i + 1) + '. ' + esc(f.t) + '</h3><p class="w">' + esc(f.where) + '</p><p>' + esc(f.why) + '</p><p><a href="#' + f.ref + '">Обоснование в отчёте →</a></p></div>').join('');
+</script>
+</body>
+</html>

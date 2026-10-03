@@ -1,0 +1,271 @@
+# Граф процессов СМК — схема узлов, рёбер и атрибутов.
+# Версия 0.1 (черновик), 02.10.2026, D-044. Пояснения — ../01_concept.md, соответствия — ../03_mapping.md.
+#
+# Обозначения:
+#   required: true   — элемент каркаса; отсутствие = GAP по правилам ../rules/connectivity.yaml
+#   required: when_present — обязателен, если в тексте есть соответствующая конструкция
+#   required: false  — опция; создаётся только при наличии в тексте
+#   soft_warning: true — отсутствие даёт мягкое предупреждение
+#   bs / bpmn        — имя в Business Studio (справка BS 5) / BPMN 2.0
+
+version: "0.1"
+status: draft
+
+evidence:
+  description: Доказательство. Обязательно у каждого узла, ребра и заполненного атрибута.
+  required: true
+  fields:
+    document_code: {type: string, required: true, note: "код документа корпуса, например КД-РГ-127-04"}
+    clause: {type: string, required: true, note: "номер пункта / таблица / рисунок"}
+    quote: {type: string, required: true, note: "дословная цитата"}
+    mode:
+      type: enum
+      required: true
+      values:
+        explicit: "прямо сказано в тексте"
+        structural: "следует из структуры: нумерованная процедура, таблица шагов, схема в документе"
+        reference: "взято из справочника (оргструктура, реестр документов), не из текста"
+    confidence: {type: float, required: true, range: [0.0, 1.0], note: "< 0.5 — не в граф, в _low_confidence.json"}
+  forbidden_modes: [guess, inferred, default]
+
+common_attributes:
+  name_original: {type: string, required: true, note: "имя как в тексте, не изменяется"}
+  name_normalized: {type: string, required: false, note: "только переформулировка без добавления смысла; не удалось — null"}
+
+nodes:
+  PROCESS:
+    bs: "Процесс / единица деятельности (справочник «Деятельность»)"
+    bpmn: "process / pool"
+    required: true
+    attributes:
+      name_original: {required: true}
+      code: {type: string, required: false, note: "код из документа или РК"}
+      level: {type: int, required: false}
+      process_type: {type: enum, required: false, values: [management, core, support], note: "только из РК / текста"}
+      content: {type: string, required: false, bs: "Содержание деятельности"}
+
+  TASK:
+    bs: "Задача"
+    bpmn: "task"
+    required: true
+    attributes:
+      name_original: {required: true}
+      name_normalized: {required: false, rule: "глагол + объект"}
+      task_type: {type: enum, required: false, default: undefined, values: [undefined, manual, service]}
+      control: {type: bool, required: false, note: "true только если текст прямо называет шаг проверкой/контролем"}
+      duration: {type: string, required: false, note: "срок/норматив как в тексте; нет — null, не дефолт"}
+      order_no: {type: int, required: false, note: "номер шага, если есть в процедуре/таблице"}
+      details: {type: string, required: false, note: "особенности выполнения"}
+
+  EVENT:
+    bs: "Стартовое / Промежуточное / Конечное событие"
+    bpmn: "startEvent / intermediateEvent / endEvent"
+    required: true
+    required_note: "start и end обязательны (конец может быть заменён LINK); intermediate — опция"
+    attributes:
+      name_original: {required: true}
+      name_normalized: {required: false, rule: "объект + краткое причастие"}
+      position: {type: enum, required: true, values: [start, intermediate, end]}
+      trigger: {type: enum, required: false, default: none, values: [none, message, timer, condition], note: "не none — только если сказано прямо"}
+
+  GATEWAY:
+    bs: "Шлюз"
+    bpmn: "exclusiveGateway / parallelGateway / inclusiveGateway"
+    required: when_present
+    required_note: "обязателен, если в тексте есть ветвление или слияние"
+    attributes:
+      gateway_type: {type: enum, required: true, values: [exclusive, parallel, inclusive, undefined]}
+      role: {type: enum, required: false, values: [split, join]}
+      question: {type: string, required: false, note: "подпись шлюза ветвления"}
+
+  LINK:
+    bs: "Ссылка / свёрнутый пул процесса / процесс-ссылка (МДС в IDEF0)"
+    bpmn: "intermediateThrowEvent(link) / messageFlow → collapsed pool / callActivity"
+    required: true
+    required_note: "в каждой схеме должен быть END EVENT или LINK"
+    attributes:
+      kind: {type: enum, required: true, values: [link_event, message_to_pool, call_activity]}
+      direction: {type: enum, required: true, values: [in, out], note: "вход из другой схемы / переход в другую схему"}
+      target_text: {type: string, required: true, note: "на что ссылается, как в тексте"}
+      target_process_code: {type: string, required: false, note: "только если найден однозначно"}
+
+  ORG_UNIT:
+    bs: "Оргединица"
+    bpmn: "lane"
+    required: true
+    required_note: "обязателен уровень department (дорожка); остальные виды — опция"
+    attributes:
+      name_original: {required: true}
+      kind: {type: enum, required: true, values: [department, position, role, group, person, unknown]}
+      seed_id: {type: string, required: false, note: "id в справочнике оргструктуры / bs_guid"}
+      dept_type: {type: enum, required: false, values: [директорат, служба, управление, отдел, другое]}
+      collective: {type: bool, required: false, note: "собирательный исполнитель («согласующие подразделения»)"}
+
+  DOCUMENT:
+    bs: "Документы / Нормативно-справочные документы"
+    required: false
+    required_note: "документ-источник создаётся всегда (он в evidence)"
+    attributes:
+      code: {type: string, required: false}
+      name_original: {required: true}
+      doc_type: {type: string, required: false, note: "Внешний НД, Стандарт предприятия, Руководство, Инструкция, Положение, Регламент, Распорядительный…"}
+      external: {type: bool, required: false}
+
+  OBJECT:
+    bs: "Функциональные объекты"
+    bpmn: "dataObject"
+    required: false
+    attributes:
+      name_original: {required: true}
+      subtype: {type: enum, required: false, values: [document, information, material, other]}
+      form_ref: {type: string, required: false, note: "номер формы / приложения, если указан"}
+
+  DATA_STORE:
+    bs: "Базы данных"
+    bpmn: "dataStore"
+    required: false
+    attributes:
+      name_original: {required: true}
+
+  SOFTWARE:
+    bs: "Программные продукты"
+    required: false
+    attributes:
+      name_original: {required: true}
+      sw_type: {type: enum, required: false, values: [system, module, function]}
+
+  EXTERNAL:
+    bs: "Внешние ссылки / внешняя оргединица"
+    bpmn: "collapsed pool"
+    required: false
+    attributes:
+      name_original: {required: true}
+      kind: {type: enum, required: false, values: [client, supplier, authority, group_company, other]}
+
+  BUSINESS_RULE:
+    bpmn: "textAnnotation"
+    required: false
+    attributes:
+      text: {type: string, required: true, note: "дословно"}
+
+  RISK:
+    required: false
+    attributes:
+      name_original: {required: true}
+      description: {type: string, required: false}
+
+  KPI:
+    bs: "Показатели"
+    required: false
+    required_note: "создаётся только если есть хотя бы одна мера: threshold / target / unit / formula"
+    attributes:
+      name_original: {required: true}
+      threshold: {type: string, required: false}
+      target: {type: string, required: false}
+      unit: {type: string, required: false}
+      formula: {type: string, required: false}
+      periodicity: {type: string, required: false}
+      data_source: {type: string, required: false}
+    constraints:
+      - "хотя бы одно из [threshold, target, unit, formula] не null"
+
+edges:
+  # --- каркас ---
+  FLOW:
+    bs: "Поток управления"
+    bpmn: "sequenceFlow"
+    required: true
+    from: [EVENT, TASK, GATEWAY, LINK]
+    to: [EVENT, TASK, GATEWAY, LINK]
+    attributes:
+      condition: {type: string, required: false, note: "только на выходах шлюза, как в тексте"}
+    note: "важно наличие ребра, не наполнение"
+
+  PERFORMS:
+    bs: "выполняет"
+    bpmn: "lane membership"
+    required: true
+    from: [ORG_UNIT]
+    to: [TASK]
+    constraints: ["у каждой TASK есть PERFORMS от ORG_UNIT.kind=department (напрямую или через IN_UNIT)"]
+
+  CONTAINS:
+    bs: "декомпозиция"
+    bpmn: "subProcess / вложенность"
+    required: true
+    from: [PROCESS]
+    to: [PROCESS, TASK, EVENT, GATEWAY, LINK]
+    note: "ставится mode=structural по разделу документа"
+
+  # --- опции ---
+  OWNS: {bs: "субъект процесса «владелец»", required: false, soft_warning: true, from: [ORG_UNIT], to: [PROCESS]}
+  PARTICIPATES:
+    bs: "субъект процесса «участник»"
+    required: false
+    from: [ORG_UNIT]
+    to: [TASK, PROCESS]
+    attributes:
+      role: {type: enum, required: false, values: [approves, signs, agrees, informed, consulted, controls, other]}
+  INPUT:
+    bs: "предоставляет входные данные для / является входом для / используется"
+    bpmn: "dataInputAssociation"
+    required: false
+    from: [OBJECT, DOCUMENT]
+    to: [TASK]
+    attributes:
+      doc_status: {type: string, required: false, note: "проект / согласованный / утверждённый … как в тексте"}
+      bs_link: {type: enum, required: false, values: ["предоставляет входные данные для", "является входом для", "используется"]}
+  OUTPUT:
+    bs: "имеет на выходе / создает на выходе / изменяет"
+    bpmn: "dataOutputAssociation"
+    required: false
+    from: [TASK]
+    to: [OBJECT, DOCUMENT]
+    attributes:
+      doc_status: {type: string, required: false}
+      bs_link: {type: enum, required: false, values: ["создает на выходе", "имеет на выходе", "изменяет"]}
+  STORED_IN: {bs: "ассоциация с базой данных", required: false, from: [OBJECT, DOCUMENT], to: [DATA_STORE, SOFTWARE]}
+  SUPPORTED_BY:
+    bs: "поддерживает / выполняет"
+    required: false
+    from: [SOFTWARE]
+    to: [TASK]
+    attributes:
+      link_type: {type: enum, required: false, values: [supports, executes]}
+  MESSAGE:
+    bs: "Поток сообщений"
+    bpmn: "messageFlow"
+    required: false
+    soft_warning: true
+    from: [TASK, EVENT, LINK, EXTERNAL]
+    to: [TASK, EVENT, LINK, EXTERNAL]
+    attributes:
+      object_ref: {type: string, required: false, note: "передаваемый объект"}
+  REGULATED_BY:
+    bs: "Нормативно-справочные документы"
+    required: false
+    from: [PROCESS, TASK]
+    to: [DOCUMENT]
+    note: "на документ-источник — автоматически (mode=structural); на другие — только по прямой ссылке"
+  IN_UNIT: {bs: "иерархия оргструктуры", required: false, from: [ORG_UNIT], to: [ORG_UNIT], note: "должность/роль → подразделение; из текста или справочника"}
+  MEMBER_OF: {bs: "Назначение на роль / состав группы (агрегация)", required: false, from: [ORG_UNIT], to: [ORG_UNIT], note: "только если состав перечислен"}
+  SUBORDINATE_TO:
+    bs: "Административное / Функциональное подчинение"
+    required: false
+    from: [ORG_UNIT]
+    to: [ORG_UNIT]
+    attributes:
+      kind: {type: enum, required: true, values: [administrative, functional]}
+    note: "из справочника оргструктуры (mode=reference), не из текста процесса"
+  RULE_FOR: {required: false, from: [BUSINESS_RULE], to: [GATEWAY, TASK]}
+  HAS_RISK: {required: false, from: [RISK], to: [TASK, PROCESS]}
+  MITIGATES: {required: false, from: [TASK], to: [RISK], note: "только TASK.control=true и прямая связь в тексте"}
+  MEASURED_BY: {required: false, from: [TASK], to: [KPI], note: "контрольная задача → показатель"}
+  MEASURES: {bs: "Показатели процесса", required: false, from: [KPI], to: [PROCESS]}
+  RESPONSIBLE_FOR_KPI: {bs: "ответственный за выполнение", required: false, from: [ORG_UNIT], to: [KPI]}
+  SW_PART_OF: {bs: "ИС → модуль → функция", required: false, from: [SOFTWARE], to: [SOFTWARE]}
+
+out_of_graph:
+  TERM: "справочник терминов вне графа: склейка имён, подсказка типа узла, связи между документами (../catalogs/catalogs.yaml TERMS, D-045)"
+  GOAL: "цели BSC — не входят в модель процесса"
+  VERSION: "версии и статусы — зона Business Studio"

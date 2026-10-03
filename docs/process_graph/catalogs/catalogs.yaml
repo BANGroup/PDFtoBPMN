@@ -1,0 +1,103 @@
+# Справочники для наполнения графа процессов.
+# Версия 0.1 (черновик), 02.10.2026, D-045. Пояснения — ../04_catalogs.md.
+# Поля справочников 1–3 — предварительный минимум; детальное проектирование — следующий шаг.
+#
+# field.bs: имя поля/связи в Business Studio; null — наше дополнение (в BS — пользовательский параметр MetaEdit).
+
+version: "0.1"
+status: draft
+
+principles:
+  - "минимум — только то, без чего не собрать каркас графа (D-044)"
+  - "поля проектируются от Business Studio, наши дополнения — отдельно (bs: null)"
+  - "связи между справочниками — по id, не по тексту"
+  - "Rule 0: пустое поле остаётся пустым и видно как пробел"
+
+catalogs:
+  PROCESSES:
+    bs: "Деятельность"
+    order: 1
+    in_graph: true
+    graph_use: [PROCESS, LINK.target_process_code]
+    fields_draft:
+      code: {bs: "Ручной код / Иерархический код", required: true}
+      name: {bs: "Название", required: true}
+      parent: {bs: "иерархия справочника", required: true, note: "корень — категория по РК"}
+      owner: {bs: "субъект процесса «владелец»", required: true, ref: ORG_STRUCTURE}
+    sources_now:
+      - "todo/backend/qms_taxonomy.py"
+      - "todo/webBI/qms-process-map.html"
+      - "data/bnd_corpus/manifest.json: process_code"
+      - "docs/РК01-2026-08.pdf"
+    known_gaps:
+      - "три версии не сходятся: 16 кодов против 14, разные названия, 21 против 17 подпроцессов"
+      - "владелец — текст, не ссылка на оргструктуру"
+
+  ORG_STRUCTURE:
+    bs: "Оргединицы"
+    order: 2
+    in_graph: true
+    graph_use: [ORG_UNIT, IN_UNIT, SUBORDINATE_TO]
+    fields_draft:
+      id: {bs: "guid", required: true}
+      name: {bs: "Название", required: true}
+      kind: {bs: "класс оргединицы: Подразделение / Должность / Роль / Группа оргединиц / Внешняя оргединица", required: true}
+      parent: {bs: "иерархия оргструктуры", required: true, note: "для должности — подразделение"}
+    sources_now:
+      - "todo/webBI/orgstruct-catalog.json (Lotus, 1119 узлов)"
+      - "todo/webBI/orgstruct-unified.json (1070 узлов, оргсхемы 61 подразделения)"
+    known_gaps:
+      - "должностей с id нет"
+      - "руководитель у 21 из 1119"
+      - "штатного расписания нет"
+      - "скрипт сборки unified не найден"
+
+  DOCUMENTS:
+    bs: "Документы"
+    order: 3
+    in_graph: true
+    graph_use: [DOCUMENT, evidence.document_code, REGULATED_BY]
+    fields_draft:
+      code: {bs: "Код", required: true}
+      name: {bs: "Название", required: true}
+      doc_type: {bs: "Тип документа", required: true}
+      process: {bs: null, required: true, ref: PROCESSES}
+      owner_unit: {bs: null, required: true, ref: ORG_STRUCTURE}
+      status: {bs: null, required: true, values: [действует, отменён]}
+    sources_now:
+      - "todo/webBI/doc-catalog.json"
+      - "data/bnd_corpus/manifest.json (361 документ БНД, ночная сборка scripts/ingestion/bnd_sync)"
+    known_gaps:
+      - "подразделение-владелец у 191 из 361 (в версии 22.05 — у всех), текст, не id"
+
+  TERMS:
+    bs: "Термины"
+    order: 4
+    in_graph: false
+    graph_use:
+      - "склейка имён: одно понятие — один узел"
+      - "подсказка типа узла из определения (только если тип назван)"
+      - "связи между документами: определён в А, используется в Б"
+      - "дефекты: разные определения (≠ контекст), неопределённый термин (⚠ GAP)"
+    fields:
+      name: {bs: "Название", required: true, note: "сокращение — прописными"}
+      definition: {bs: "Описание", required: true}
+      defined_in: {bs: "бинарная связь «определяется» (НД → термин)", required: true, ref: DOCUMENTS}
+      kind: {bs: null, required: true, values: [term, abbreviation]}
+      full_form: {bs: null, required: when_abbreviation}
+      variants: {bs: null, required: false, note: "варианты написания, синонимы"}
+      node_type_hint: {bs: null, required: false, values: [OBJECT, SOFTWARE, ORG_UNIT, PROCESS, DATA_STORE, EXTERNAL], note: "только если назван в определении, с цитатой"}
+      status: {bs: null, required: true, values: [draft, approved], note: "approved — только человек"}
+    sources_now:
+      - "todo/webBI/qms-glossary/data/glossary-data.js (5624 записи, 615 групп дублей)"
+      - "todo/webBI/qms-glossary/data/doc-links.json (5237 ссылок термин → документ)"
+    known_gaps:
+      - "грязный сбор, статуса утверждения нет"
+      - "скрипт сборки в репозитории нет"
+
+later:
+  - {name: "Программные продукты", bs: "Программные продукты", graph_use: [SOFTWARE]}
+  - {name: "Базы данных", bs: "Базы данных", graph_use: [DATA_STORE]}
+  - {name: "Внешние участники", bs: "Внешние ссылки", graph_use: [EXTERNAL]}
+  - {name: "Показатели", bs: "Показатели", graph_use: [KPI]}
+  - {name: "Риски", bs: null, graph_use: [RISK]}

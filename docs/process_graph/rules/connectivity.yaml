@@ -1,0 +1,81 @@
+# Правила связности схемы процесса и предупреждения.
+# Версия 0.1 (черновик), 02.10.2026, D-044. Пояснения — ../01_concept.md §5.
+#
+# Нарушение НЕ блокирует сохранение схемы и НЕ исправляется автоматически (Rule 0).
+# Результат проверки — список GAP с правилом, элементом и пунктом документа.
+
+version: "0.1"
+
+scope: "одна схема = один PROCESS и всё, что связано с ним CONTAINS"
+
+definitions:
+  starts: "EVENT.position=start, а также LINK.direction=in"
+  terminals: "EVENT.position=end, а также LINK.direction=out"
+  flow_graph: "ориентированный граф по рёбрам FLOW внутри схемы"
+
+gap_markers:  # нотация Rule 0 (.cursor/rules/00_rule_zero_vacuum.mdc)
+  gap: "⚠ GAP"
+  na: "⊘ n/a"
+  context: "≠ контекст"
+  one_way: "→? обратное направление неизвестно"
+
+rules:
+  C1:
+    title: "Есть старт"
+    check: "count(starts) >= 1"
+    severity: gap
+    marker: gap
+  C2:
+    title: "Есть конец или переход"
+    check: "count(terminals) >= 1"
+    severity: gap
+    marker: gap
+  C3:
+    title: "Каждый элемент достижим из старта"
+    check: "для каждого узла flow_graph: существует путь из любого starts"
+    algorithm: "BFS по FLOW от всех starts; недостигнутые узлы — нарушение"
+    severity: gap
+    marker: gap
+  C4:
+    title: "Из каждого элемента достижим конец или переход"
+    check: "для каждого узла flow_graph: существует путь в любой terminals"
+    algorithm: "BFS по обратным FLOW от всех terminals; недостигнутые узлы — нарушение"
+    severity: gap
+    marker: gap
+  C5:
+    title: "Нет висящих элементов"
+    check: "in_degree(FLOW) >= 1 для всех, кроме starts; out_degree(FLOW) >= 1 для всех, кроме terminals"
+    severity: gap
+    marker: gap
+  C6:
+    title: "Шлюз корректно разветвляет или сливает"
+    check: "split: out_degree >= 2; join: in_degree >= 2; gateway_type=undefined — отдельное предупреждение W5"
+    severity: gap
+    marker: gap
+  C7:
+    title: "У задачи есть подразделение-исполнитель"
+    check: "для каждой TASK: PERFORMS от ORG_UNIT kind=department, или от ORG_UNIT с IN_UNIT → department"
+    severity: gap
+    marker: gap
+
+warnings:
+  W1: {title: "Исполнитель — собирательный, подразделение не определено", severity: gap, marker: gap}
+  W2: {title: "Порядок шагов в тексте не определён (FLOW не построен)", severity: gap, marker: gap}
+  W3: {title: "Тип шлюза не определён или у ветви нет условия", severity: info, marker: na}
+  W4: {title: "Процесс без владельца (OWNS)", severity: soft, marker: na}
+  W5: {title: "Процесс изолирован: нет LINK, MESSAGE и общих OBJECT с другими процессами", severity: soft, marker: gap}
+  W6: {title: "Оборванный вход/выход: OBJECT появляется ниоткуда или уходит никуда (по корпусу)", severity: soft, marker: one_way}
+  W7: {title: "Исполнитель не найден или неоднозначен в справочнике оргструктуры", severity: gap, marker: gap}
+  W8: {title: "Источники противоречат: текст, таблица и схема в документе", severity: gap, marker: context}
+  W9: {title: "Имя не соответствует правилу нормализации (событие, задача)", severity: info, marker: na}
+  W10: {title: "Цель перехода (LINK.target_text) не сопоставлена с процессом корпуса", severity: soft, marker: one_way}
+
+forbidden_fixes:
+  - "добавлять FLOW, EVENT, LINK или GATEWAY ради выполнения C1–C6"
+  - "назначать исполнителя по смыслу ради выполнения C7"
+  - "подставлять процесс в LINK по похожему названию"
+  - "удалять висящий элемент, чтобы схема стала связной"
+
+report:
+  per_process_counters: ["извлечено элементов", "пропуски источника (GAP)", "низкая уверенность"]
+  gap_entry: [rule_or_warning, element_id, document_code, clause, quote_or_null]
