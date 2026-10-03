@@ -315,10 +315,12 @@ class SafetyGuardTest(unittest.TestCase):
 class ClaudeCodeFormatTest(unittest.TestCase):
     """Вход и ответ Claude Code (TASK-020): хук запускается с `--claude`."""
 
+    FLAG = "--claude"
+
     def _run(self, tool_name: str, tool_input: dict[str, object]) -> subprocess.CompletedProcess[str]:
         payload = {"hook_event_name": "PreToolUse", "tool_name": tool_name, "tool_input": tool_input}
         return subprocess.run(
-            [sys.executable, str(HOOK), "--claude"],
+            [sys.executable, str(HOOK), self.FLAG],
             input=json.dumps(payload), text=True, capture_output=True, check=False,
         )
 
@@ -368,6 +370,24 @@ class ClaudeCodeFormatTest(unittest.TestCase):
         out = json.loads(result.stdout)["hookSpecificOutput"]
         self.assertEqual(out["permissionDecision"], "deny")
         self.assertIn("probe", out["permissionDecisionReason"])
+
+
+class CodexFormatTest(ClaudeCodeFormatTest):
+    """Codex (D-046): формат Claude Code, флаг `--codex`; правки — apply_patch с патчем в command."""
+
+    FLAG = "--codex"
+
+    @staticmethod
+    def _patch(path: str) -> dict[str, object]:
+        return {"command": f"*** Begin Patch\n*** Update File: {path}\n@@\n-a\n+b\n*** End Patch\n"}
+
+    def test_apply_patch_secret_denied(self) -> None:
+        for path in (".env", "config/.env.local", "certs/server.key"):
+            self.assertDenied("apply_patch", self._patch(path))
+
+    def test_apply_patch_allowed(self) -> None:
+        self.assertAllowed("apply_patch", self._patch("scripts/x.py"))
+        self.assertAllowed("apply_patch", self._patch(".env.example"))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,25 @@
+---
+name: "source-command-start"
+description: "Начало сессии. Orchestrator читает состояние проекта и назначает уровень риска задачи."
+---
+
+# source-command-start
+
+Use this skill when the user asks to run the migrated source command `start`.
+
+## Command Template
+
+# Начало работы над PDFtoBPMN v2.1
+
+Ты — orchestrator (модель основного чата). Код и runtime — через coder.
+
+## Перед задачей
+1. `docs/CURRENT_STATE.md` — где мы сейчас, открытые задачи, блокеры.
+2. `docs/DECISIONS.md` — решения; ни одно не нарушается без нового решения.
+3. `.cursor/plans/` — последний TASK-NNN и его статус.
+4. `.cursor/rules/00_global_always.mdc` — базовые принципы и уровни риска; Rule 0 — выше всего.
+
+## Задача
+- Назначь уровень риска `low | medium | high` (неясно → выше) и скажи его human.
+- `low` — план 2–3 строки в чате; `medium`/`high` — план в `.cursor/plans/TASK-NNN.md` со шагами `действие → verify`; `high` — согласование human до реализации.
+- Допущения и несколько прочтений задачи — перечислить и спросить, не выбирать молча.

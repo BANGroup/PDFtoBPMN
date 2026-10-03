@@ -41,7 +41,7 @@ alwaysApply: true
 - **Дешёвые проверки данных — до реализации**, а не после прогона.
 - **Не подменять алгоритм хардкодом, fallback или фейковыми результатами.**
 - **Коммит и пуш — только по команде human.**
-- **Охранник `.cursor/hooks/safety_guard.py`** (preToolUse, fail-closed; один скрипт для Cursor и Claude Code, D-042) останавливает `rm -rf`, разрушительные git-команды (reset --hard, push --force, clean -f, сброс рабочей копии) и запись в `.env*`/ключи. Отказ охранника — это стоп: не искать обход (`bash -c`, `$(...)` и т.п. он сознательно не ловит), а спросить human. Правка `.env` — делает human.
+- **Охранник `.cursor/hooks/safety_guard.py`** (preToolUse, fail-closed; один скрипт для Cursor, Claude Code и Codex, D-042, D-046) останавливает `rm -rf`, разрушительные git-команды (reset --hard, push --force, clean -f, сброс рабочей копии) и запись в `.env*`/ключи. Отказ охранника — это стоп: не искать обход (`bash -c`, `$(...)` и т.п. он сознательно не ловит), а спросить human. Правка `.env` — делает human.
 
 ## Уровни риска (назначает orchestrator до начала работы; неясно → уровень выше)
 | Уровень | Что | Процесс |
@@ -62,7 +62,7 @@ alwaysApply: true
 ## Ревью и доказательства
 - Находка ревью — мнение, пока нет доказательства. Уровни: **L1** — вывод, код возврата, текст ошибки; **L2** — линтер/схема; **L3** — тест, запрос, фактический ответ сервера; **L4** — суждение по чтению кода.
 - Блокировать могут только L1–L3 либо L4 с названной механической проверкой. Вкусовое («упростить», стиль) — наблюдение, не блокер.
-- Автор и проверяющий — модели разных семейств (coder — Grok, validator — GPT). В Claude Code все модели — Claude: для `low`/`medium` validator — Opus, для `high` обязательна проверка GPT-валидатором в Cursor (D-042).
+- Автор и проверяющий — модели разных семейств (coder — Grok, validator — GPT). В Claude Code все модели — Claude: для `low`/`medium` validator — Opus, для `high` обязательна проверка GPT-валидатором в Cursor (D-042). В Codex все модели — GPT: для `low`/`medium` validator — субагент Codex, для `high` обязательна проверка validator'ом другого семейства — Claude Code (Opus) или Cursor (D-046).
 - Retry: макс. 3 итерации «реализация → проверка», затем стоп и доклад human.
 
 ## Governance (анти-дрейф)
@@ -71,7 +71,7 @@ alwaysApply: true
 - Максимум 3 итерации на задачу. После 3 — стоп, отчёт human.
 - Расширение scope после утверждения плана — запрещено (новый план).
 - `.cursor/rules/*.mdc` — меняет ТОЛЬКО human или Claude Code по его прямой команде. Предложить может orchestrator, проверяет scribe.
-- Обвязка общая для Cursor и Claude Code (D-042): правит только Claude Code по команде human и всегда в обоих наборах; после правки — `python3 .cursor/state/harness_sync.py`, расхождение ловит `tests/test_harness_sync.py`.
+- Обвязка общая для Cursor, Claude Code и Codex (D-042, D-046): правит только Claude Code по команде human и всегда во всех наборах; после правки — `python3 .cursor/state/harness_sync.py`, расхождение ловит `tests/test_harness_sync.py`.
 
 ## Запрещено без явного разрешения (все агенты)
 - Запуск batch processing на всём корпусе.
@@ -93,8 +93,8 @@ alwaysApply: true
 ## Ownership (жёсткий)
 ```
 .cursor/rules/**       → HUMAN ONLY (или Claude Code по прямой команде human)
-.cursor/agents/**, .cursor/hooks/**, .cursor/skills/**, .cursor/state/harness_*, .claude/**, CLAUDE.md
-                       → Claude Code по команде human, синхронно обе среды (D-042)
+.cursor/agents/**, .cursor/hooks/**, .cursor/skills/**, .cursor/commands/**, .cursor/state/harness_*, .claude/**, CLAUDE.md, .codex/**, .agents/**, AGENTS.md
+                       → Claude Code по команде human, синхронно все среды (D-042, D-046)
 .cursor/plans/**       → orchestrator only
 .cursor/state/**       → scribe only
 docs/**                → scribe only

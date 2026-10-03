@@ -21,11 +21,11 @@ import traceback
 from typing import Any, Callable, Dict
 
 
-# Claude Code (TASK-020): хук запускается с `--claude`. Запрет — JSON
-# `hookSpecificOutput.permissionDecision = deny` с причиной (её видит модель);
-# разрешение — пустой ответ: явное "allow" в Claude Code обошло бы запросы
-# подтверждения пользователя.
-CLAUDE = "--claude" in sys.argv
+# Claude Code (TASK-020): хук запускается с `--claude`, Codex (D-046) — с `--codex`:
+# формат ответа у них общий. Запрет — JSON `hookSpecificOutput.permissionDecision = deny`
+# с причиной (её видит модель); разрешение — пустой ответ: явное "allow" обошло бы
+# запросы подтверждения пользователя.
+CLAUDE = "--claude" in sys.argv or "--codex" in sys.argv
 
 
 def emit(verdict: Dict[str, Any]) -> None:

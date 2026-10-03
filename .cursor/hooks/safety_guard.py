@@ -89,7 +89,8 @@ def _patch_text(payload: dict[str, Any]) -> str:
     if isinstance(value, str):
         return value
     if isinstance(value, dict):
-        for key in ("patch", "content", "text"):
+        # command — Codex: текст патча apply_patch лежит в tool_input.command (D-046).
+        for key in ("patch", "content", "text", "command"):
             text = value.get(key)
             if isinstance(text, str):
                 return text
@@ -372,8 +373,9 @@ def main() -> None:
     if not isinstance(payload, dict):
         payload = {}
 
-    tool_name = _tool_name(payload)
-    if tool_name in ("shell", "bash"):  # bash — Claude Code
+    # apply_patch — Codex (D-046), тот же инструмент, что applypatch у Cursor.
+    tool_name = _tool_name(payload).replace("_", "")
+    if tool_name in ("shell", "bash"):  # bash — Claude Code и Codex
         _handle_shell(payload)
         return
     if tool_name in EDIT_TOOLS:

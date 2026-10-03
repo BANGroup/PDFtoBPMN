@@ -745,3 +745,24 @@ IATA-732 для задержек, которые невозможно увере
 **Affected:**
 - `docs/process_graph/04_catalogs.md`, `docs/process_graph/catalogs/catalogs.yaml` — новые
 - `docs/process_graph/README.md`, `docs/process_graph/schema/process_graph.schema.yaml` — ссылки на справочники
+
+## D-046: Codex — третья среда общей обвязки агентов (03.10.2026)
+
+**Контекст:** 30.09 автоимпорт Codex создал `AGENTS.md`, `.codex/` и `.agents/skills/` механической заменой «Claude» → «Codex». Найдено: несуществующие пути `.Codex/…` и флаг `--Codex`; модели `Codex-sonnet-5` и т. п.; `AGENTS.md` подключал правила через `@файл`, а Codex такие ссылки не раскрывает — правила не подгружались; хук вызывался через `$CLAUDE_PROJECT_DIR` и `--claude`; `safety_guard` не распознавал правку файлов Codex (`apply_patch`, текст патча в `tool_input.command`) — защита `.env`/ключей при правках через Codex не работала; карточки validator не было, был лишний orchestrator; Codex-набор не входил в `harness_sync.py` и проверку. Human: оформить Codex по образцу Claude Code (TASK-020, D-042).
+
+**Решение:** Codex — третья среда, источник истины по-прежнему `.cursor/`, обвязку правит только Claude Code по команде human (D-042). `harness_sync.py` генерирует для Codex: `.codex/agents/{coder,validator,scribe,extractor}.toml` (без поля model — модель сессии Codex; orchestrator — основной чат), копии `.cursor/skills` в `.agents/skills`, навыки `source-command-<имя>` из `.cursor/commands/*.md`, `.codex/hooks.json` (safety_guard `--codex`, matcher `Bash|apply_patch|Edit|Write`, абсолютный путь — Codex запускает хуки из cwd сессии). `safety_guard`: флаг `--codex` (формат ответа как у Claude Code), распознавание `apply_patch`. `AGENTS.md` переписан: правила читаются явно. Модели разных семейств: в Codex все модели GPT — для `low`/`medium` validator — субагент Codex, для `high` обязательна проверка validator'ом другого семейства (Claude Code/Opus или Cursor). Журнал: `--model <id модели сессии Codex>`. Хуки Codex требуют одобрения human (trust).
+
+**Альтернативы отклонены:**
+- Оставить автоимпорт: правила не подгружались, охранник не защищал правки, наборы расходились без контроля.
+- Симлинки навыков для Codex (как у Claude Code): поддержка симлинков в обнаружении навыков Codex не подтверждена — копии + проверка совпадения.
+
+**Следствия:**
+- `tests/test_harness_sync.py` проверяет три набора и разбор TOML/JSON Codex; `tests/test_safety_guard.py` — формат Codex. 56 тестов зелёные; validator post-gate PASS (предупреждение: шаблон `scripts/bpmn/**` в таблице правил указывает на ещё не созданный каталог — перенесён из CLAUDE.md и `30_bpmn_and_bs.mdc`).
+- Правила обновлены по прямой команде human (03.10.2026): `.cursor/rules/00_global_always.mdc` (охранник, модели разных семейств, обвязка, ownership), `.cursor/rules/project.mdc` (Codex), `.cursorrules` (карта файлов). Validator (Opus) PASS; по уровню high задача закрывается после проверки GPT-валидатором в Cursor.
+
+**Affected:**
+- `.cursor/state/harness_sync.py`, `.cursor/state/harness_models.json` (пояснение), `.cursor/hooks/hook_io.py`, `.cursor/hooks/safety_guard.py`
+- `tests/test_harness_sync.py`, `tests/test_safety_guard.py`
+- `AGENTS.md` (переписан), `CLAUDE.md` (синхронизация)
+- сгенерированы: `.codex/agents/*.toml`, `.codex/hooks.json`, `.agents/skills/*`; удалён `.codex/agents/orchestrator.toml` (с согласия human)
+- `.cursor/rules/00_global_always.mdc`, `.cursor/rules/project.mdc`, `.cursorrules` — упоминание Codex

@@ -30,10 +30,13 @@
     start.md                      /start — первая команда orchestrator'у
   plans/
     TASK-NNN.md                   Планы orchestrator'а
-  state/harness_models.json       модели ролей для Cursor и Claude Code (D-042)
-  state/harness_sync.py           собирает .claude/agents и поле model карточек Cursor; --check
+  state/harness_models.json       модели ролей для Cursor и Claude Code; Codex — модель сессии (D-042, D-046)
+  state/harness_sync.py           собирает .claude/, .codex/, .agents/ и поле model карточек Cursor; --check
 .claude/                          Claude Code: settings.json (safety_guard --claude), agents/ (генерируются), skills/ (симлинки)
 CLAUDE.md                         вход Claude Code: импорт общих правил
+.codex/                           Codex: hooks.json (safety_guard --codex), agents/*.toml (генерируются)
+.agents/skills/                   Codex: копии навыков и навыки из команд (генерируются)
+AGENTS.md                         вход Codex: какие правила прочитать, отличия среды
 ```
 
 ## Ключевые принципы

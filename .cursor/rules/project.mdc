@@ -10,7 +10,7 @@ alwaysApply: true
 Источник истины: `.cursor/rules/*.mdc` (модульно, human-only changes).
 
 ## Агенты (5, D-011 supersedes D-005)
-Модели ниже — Cursor. Claude Code (D-042): orchestrator — основной чат, coder — Sonnet 5, validator — Opus 5.5, scribe — Haiku 4.5, extractor — Opus 5.5. Единая таблица — `.cursor/state/harness_models.json`.
+Модели ниже — Cursor. Claude Code (D-042): orchestrator — основной чат, coder — Sonnet 5, validator — Opus 5.5, scribe — Haiku 4.5, extractor — Opus 5.5. Codex (D-046): orchestrator — основной чат, субагенты — на модели сессии Codex (GPT). Единая таблица — `.cursor/state/harness_models.json`.
 - **orchestrator** — модель основного чата. Планирует, назначает уровень риска, ревьюит. Код запрещён.
 - **coder** — Grok 4.7. Пишет код по плану. Архитектура запрещена.
 - **validator** — GPT-5.6 Sol (другое семейство, чем coder). Pre/post gate проверки. Read-only.
@@ -26,7 +26,7 @@ alwaysApply: true
 - Business Studio sync через GUID matching.
 
 ## LLM
-- Cursor: модели субагентов — в `.cursor/agents/*.md` (поле `model`); Claude Code — `.claude/agents/*.md`. Обе стороны собираются из `.cursor/state/harness_models.json` (`harness_sync.py`, D-042).
+- Cursor: модели субагентов — в `.cursor/agents/*.md` (поле `model`); Claude Code — `.claude/agents/*.md`; Codex — `.codex/agents/*.toml`. Все наборы собираются из `.cursor/` (`harness_sync.py`, D-042, D-046).
 - Batch: Claude API (`claude-sonnet-4-6`).
 - Графика: Qwen2.5-VL-7B (локально).
 

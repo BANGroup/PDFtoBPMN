@@ -1,6 +1,6 @@
 # Obligations (PDFtoBPMN v2.1) — Claude Code
 
-Обвязка агентов общая с Cursor (TASK-020, D-042). Источник истины — `.cursor/`; здесь только подключение.
+Обвязка агентов общая с Cursor и Codex (TASK-020, D-042; Codex — D-046, `AGENTS.md`). Источник истины — `.cursor/`; здесь только подключение.
 
 ## Правила (общие, всегда)
 @.cursor/rules/00_global_always.mdc
@@ -24,7 +24,7 @@
 - **Охранник** — тот же `.cursor/hooks/safety_guard.py`, подключён в `.claude/settings.json` с флагом `--claude`.
 
 ## Синхронизация обвязки
-Обвязку правит только Claude Code по команде human, и всегда в обоих наборах:
-- тексты ролей — только в `.cursor/agents/*.md`; модели — только в `.cursor/state/harness_models.json`;
-- после любой правки: `python3 .cursor/state/harness_sync.py` (пересобирает `.claude/agents`, симлинки навыков, поле `model` в карточках Cursor);
-- `tests/test_harness_sync.py` падает, если стороны разошлись. `.claude/agents/*.md` руками не править.
+Обвязку правит только Claude Code по команде human, и всегда во всех наборах (Cursor, Claude Code, Codex):
+- тексты ролей — только в `.cursor/agents/*.md`; навыки — `.cursor/skills/`; команды — `.cursor/commands/`; модели — только в `.cursor/state/harness_models.json`;
+- после любой правки: `python3 .cursor/state/harness_sync.py` (пересобирает `.claude/agents`, симлинки навыков, `.codex/agents/*.toml`, `.agents/skills/*`, `.codex/hooks.json`, поле `model` в карточках Cursor);
+- `tests/test_harness_sync.py` падает, если наборы разошлись. Сгенерированные файлы (`.claude/agents/*.md`, `.codex/agents/*.toml`, `.agents/skills/*`, `.codex/hooks.json`) руками не править.

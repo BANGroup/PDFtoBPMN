@@ -1,5 +1,5 @@
 {
-  "_": "Модели ролей для двух сред. Правится только здесь, затем: python3 .cursor/state/harness_sync.py (TASK-020, D-042).",
+  "_": "Модели ролей: Cursor (cursor) и Claude Code (claude). Codex своих моделей не задаёт — субагенты работают на модели сессии (D-046). Правится только здесь, затем: python3 .cursor/state/harness_sync.py (TASK-020, D-042).",
   "roles": {
     "orchestrator": {"cursor": "inherit", "claude": null, "claude_id": "модель основного чата"},
     "coder": {"cursor": "grok-4.7-high-fast", "claude": "sonnet", "claude_id": "claude-sonnet-5"},
