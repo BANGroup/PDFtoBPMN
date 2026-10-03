@@ -42,7 +42,7 @@ for r in data.REPORTS:
 
 payload = {
     "rk": data.RK, "mx": data.MX, "tg": data.TG, "links": data.LINKS,
-    "status": data.STATUS, "fixes": data.FIXES,
+    "fixes": data.FIXES,
     "reports": [{k: r[k] for k in ("id", "t", "d", "src")} for r in data.REPORTS],
     "docx": docx,
 }

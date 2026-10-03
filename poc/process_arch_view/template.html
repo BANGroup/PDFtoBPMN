@@ -12,18 +12,18 @@
   --utair-grey:#737576;--utair-light-blue:#7ca3dc;--utair-light-blue2:#b4c8e7;--utair-light-grey:#d0d3d4;
   --utair-bg:#f4f5f7;
   --bg:#f4f5f7;--surface:#fcfcfb;--ink:#111820;--ink2:#3d4550;--muted:#737576;--line:#d0d3d4;--link-ink:#9aa3ad;
-  --gM:#2f63c4;--gB:#d65a0f;--gV:#0c8a5c;--gGap:#9aa0a6;
+  --gG:#c2307a;--gM:#2f63c4;--gB:#d65a0f;--gV:#0c8a5c;--gGap:#9aa0a6;
   --font:'Suisse Int\'l','Helvetica Neue',Helvetica,Arial,sans-serif;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     --bg:#111418;--surface:#1a1a19;--ink:#eef0f2;--ink2:#c9ced4;--muted:#9aa0a6;--line:#343a42;--link-ink:#5d6670;
-    --gM:#6b94e0;--gB:#d9773a;--gV:#33a077;--gGap:#7d848c;
+    --gG:#d55a97;--gM:#6b94e0;--gB:#d9773a;--gV:#33a077;--gGap:#7d848c;
   }
 }
 :root[data-theme="dark"]{
   --bg:#111418;--surface:#1a1a19;--ink:#eef0f2;--ink2:#c9ced4;--muted:#9aa0a6;--line:#343a42;--link-ink:#5d6670;
-  --gM:#6b94e0;--gB:#d9773a;--gV:#33a077;--gGap:#7d848c;
+  --gG:#d55a97;--gM:#6b94e0;--gB:#d9773a;--gV:#33a077;--gGap:#7d848c;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.5}
@@ -111,43 +111,48 @@ details.rep>summary .dl{float:right;font-size:13px;color:var(--muted)}details.re
 </nav>
 
 <main>
-  <h2 style="margin-top:8px">Процессы верхнего уровня: как есть → матрица службы качества → предложение <span class="badge-draft">черновик для обсуждения · __DATE__</span></h2>
-  <p class="lead">Слева — 14 процессов Руководства по качеству РК01-2026-08. В центре — новая архитектура службы качества (матрица 14.09.2026, кодов пока нет). Справа — предлагаемый каталог группы из 18 процессов по итогам исследования практик. Цвет узла — группа процессов, штриховка — пробел источника. Наведите на узел или связь, чтобы увидеть владельца и смысл перехода.</p>
+  <h2 style="margin-top:8px">Процессы верхнего уровня: как есть → матрица службы качества → предложение <span class="badge-draft">черновик для обсуждения · обновлено __DATE__</span></h2>
+  <p class="lead">Слева — 14 процессов Руководства по качеству РК01-2026-08. В центре — новая архитектура службы качества (матрица 14.09.2026, кодов пока нет). Справа — предложение по итогам независимой ревизии от 03.10.2026: контур управления группой (Г1–Г4) и 18 процессов ПАО как перевозчика, у каждого — выход и получатель. Категорию определяет роль процесса в цепочке ценности клиента; регулируемость и критичность — отдельный признак любой категории. Цвет узла — категория, штриховка — пробел. Наведите на узел или связь, чтобы увидеть владельца, выход и смысл соответствия.</p>
 
   <div class="tiles">
     <div class="tile"><div class="n">14</div><div class="l">процессов в РК01-2026-08</div></div>
     <div class="tile"><div class="n" id="tMx">—</div><div class="l">процессов верхнего уровня в матрице</div></div>
-    <div class="tile"><div class="n">18</div><div class="l">процессов в предложении</div></div>
-    <div class="tile"><div class="n">10</div><div class="l">кодов РК сохраняется</div></div>
-    <div class="tile"><div class="n">4</div><div class="l">кода выводятся (В2, Б5, Б6, Б7)</div></div>
-    <div class="tile"><div class="n">7</div><div class="l">новых кодов + В3 и М2 восстановлены</div></div>
+    <div class="tile"><div class="n">4 + 18</div><div class="l">процессов группы + процессов перевозчика</div></div>
+    <div class="tile"><div class="n">4 · 4 · 10</div><div class="l">управление · основные · обеспечение (перевозчик)</div></div>
+    <div class="tile"><div class="n" id="tReg">—</div><div class="l">процессов с авиационным регулированием</div></div>
+    <div class="tile"><div class="n">2</div><div class="l">процесса РК не отражены в реестре (ОТ, экология)</div></div>
   </div>
 
   <div class="toolbar">
     <div class="legend" aria-label="Легенда">
-      <span><i class="sw" style="background:var(--gM)"></i>М — менеджмент</span>
-      <span><i class="sw" style="background:var(--gB)"></i>Б — основные</span>
-      <span><i class="sw" style="background:var(--gV)"></i>В — обеспечение</span>
+      <span><i class="sw" style="background:var(--gG)"></i>Г — управление группой</span>
+      <span><i class="sw" style="background:var(--gM)"></i>М / У — управление</span>
+      <span><i class="sw" style="background:var(--gB)"></i>Б / О — основные</span>
+      <span><i class="sw" style="background:var(--gV)"></i>В / ОП — обеспечение</span>
       <span><i class="sw gap"></i>пробел: нет в РК / нет в матрице</span>
-      <span class="m" style="color:var(--muted)">толщина связи не означает объём — каждая связь = одно соответствие</span>
+      <span class="m" style="color:var(--muted)">связь = соответствие по содержанию, не поток ресурсов; толщина не означает объём</span>
     </div>
     <button class="themebtn" id="themeBtn" type="button">Тема</button>
   </div>
 
   <div class="chart-wrap" role="figure" aria-label="Санкей: соответствие процессов РК, матрицы и предложения">
-    <div class="colheads"><div>РК01-2026-08 (как есть)</div><div>Матрица службы качества 14.09.2026</div><div>Предложение (каталог группы)</div></div>
-    <svg class="sankey" id="sk" viewBox="0 0 1360 980" preserveAspectRatio="xMidYMin meet"></svg>
+    <div class="colheads"><div>РК01-2026-08 (как есть)</div><div>Матрица службы качества 14.09.2026</div><div>Предложение (ревизия 03.10.2026)</div></div>
+    <svg class="sankey" id="sk" viewBox="0 0 1360 1120" preserveAspectRatio="xMidYMin meet"></svg>
   </div>
   <div class="tip" id="tip" role="tooltip"></div>
 
-  <h2>Ключевые исправления к матрице</h2>
+  <h2>Ключевые положения и исправления к матрице</h2>
   <div class="fixes" id="fixes"></div>
 
-  <h2>Таблица трансформации</h2>
-  <p class="lead">Табличный вид той же схемы — из отчёта, раздел «Таблица трансформации РК и матрицы в целевой каталог».</p>
-  <div class="tbl-wrap md" id="transform"></div>
+  <h2>Реестр предложения: выходы и получатели</h2>
+  <p class="lead">Табличный вид третьей колонки — из ревизии, разделы «Групповой контур управляет портфелем бизнесов» и «Восемнадцать строк задают управляемое укрупнение перевозчика». Весь реестр — проектное предложение, а не утверждённый реестр ПАО.</p>
+  <div class="tbl-wrap md" id="registry"></div>
 
-  <h2>Вопросы службе качества (дополнить заказ)</h2>
+  <h2>Что изменилось после ревизии</h2>
+  <p class="lead">Матрица проверки исходных тезисов проекта — из ревизии: какие утверждения подтвердились, какие уточнены и какие опровергнуты.</p>
+  <div class="tbl-wrap md" id="revmatrix"></div>
+
+  <h2>Вопросы службе качества</h2>
   <div class="tbl-wrap md" id="questions"></div>
 
   <h2>Вложенные отчёты</h2>
@@ -175,15 +180,16 @@ $('themeBtn').onclick = () => {
   setTheme(cur === 'dark' ? 'light' : 'dark'); };
 
 /* ---------- санкей ---------- */
-const GCOL = {'М':'var(--gM)','Б':'var(--gB)','В':'var(--gV)','gap':'var(--gGap)'};
+const GCOL = {'Г':'var(--gG)','М':'var(--gM)','Б':'var(--gB)','В':'var(--gV)','gap':'var(--gGap)'};
 const nodes = [];
 DATA.rk.forEach(r => nodes.push({id:r[0], col:0, g:r[1], code:r[2], name:r[3], owner:r[4]}));
 DATA.mx.forEach(r => nodes.push({id:r[0], col:1, g:r[1], code:'', name:r[2], owner:r[3]}));
-DATA.tg.forEach(r => nodes.push({id:r[0], col:2, g:r[1], code:r[2], name:r[3], owner:r[4], st:r[5]}));
+DATA.tg.forEach(r => nodes.push({id:r[0], col:2, g:r[1], code:r[2], name:r[3], out:r[4], reg:r[5]}));
+$('tReg').textContent = DATA.tg.filter(r => /регулируемый/.test(r[5])).length;
 $('tMx').textContent = DATA.mx.filter(r => r[1] !== 'gap').length;
 const links = DATA.links.map(l => ({source:l[0], target:l[1], value:1, note:l[2]}));
 
-const W = 1360, H = 980, M = {l:8, r:8, t:8, b:8};
+const W = 1360, H = 1120, M = {l:8, r:8, t:8, b:8};
 const sk = d3.sankey().nodeId(d => d.id).nodeWidth(14).nodePadding(10)
   .nodeAlign(d => d.col).nodeSort(null)
   .extent([[M.l + 290, M.t], [W - M.r - 340, H - M.b]]);
@@ -211,7 +217,7 @@ nd.append('text')
   .text(d => trunc(label(d), d.col === 1 ? 34 : (d.col === 0 ? 36 : 46)));
 nd.filter(d => d.col === 2).append('text').attr('class','st')
   .attr('x', d => d.x1 + 8).attr('y', d => (d.y0 + d.y1) / 2 + 13).attr('dy','0.35em')
-  .text(d => DATA.status[d.st] || '');
+  .text(d => !d.reg ? '' : (/^частично/.test(d.reg) ? '◆ частично регулируемый' : (/^регулируемый/.test(d.reg) ? '◆ регулируемый' : d.reg)));
 
 /* подсветка пути и подсказка */
 const tip = $('tip');
@@ -232,7 +238,8 @@ nd.on('mousemove', (ev, d) => {
   nd.classed('dim', n => !c.N.has(n));
   showTip(ev, '<div class="m">' + colName[d.col] + (d.g !== 'gap' ? ' · группа ' + d.g : '') + '</div><b>' + esc(label(d)) + '</b>'
     + (d.owner && d.owner !== '—' ? '<div><span class="m">Владелец:</span> ' + esc(d.owner) + '</div>' : '')
-    + (d.st ? '<div><span class="m">Статус:</span> ' + esc(DATA.status[d.st]) + '</div>' : ''));
+    + (d.out && d.out !== '—' ? '<div><span class="m">Выход:</span> ' + esc(d.out) + '</div>' : '')
+    + (d.reg ? '<div><span class="m">Регулирование:</span> ' + esc(d.reg) + '</div>' : ''));
 }).on('mouseleave', hideTip);
 lk.on('mousemove', (ev, l) => {
   lk.classed('hl', x => x === l).classed('dim', x => x !== l);
@@ -245,17 +252,21 @@ const REPMD = {}; DATA.reports.forEach(r => REPMD[r.id] = md('md-' + r.id));
 function section(text, startsWith){
   const lines = text.split('\n'); const i = lines.findIndex(l => l.startsWith(startsWith));
   if(i < 0) return '';
-  let j = lines.findIndex((l, k) => k > i && /^## /.test(l)); if(j < 0) j = lines.length;
+  const lvl = startsWith.match(/^#+/)[0].length;
+  let j = lines.findIndex((l, k) => k > i && /^#+ /.test(l) && l.match(/^#+/)[0].length <= lvl); if(j < 0) j = lines.length;
   return lines.slice(i + 1, j).join('\n');
 }
-$('transform').innerHTML = marked.parse(section(REPMD.report, '## Таблица трансформации'));
-$('questions').innerHTML = marked.parse(section(REPMD.report, '## Вопросы, которые нужно добавить'));
+$('registry').innerHTML = marked.parse('#### Контур управления группой\n' + section(REPMD.revision, '### Групповой контур')
+  + '\n\n#### Процессы ПАО как перевозчика\n' + section(REPMD.revision, '### Восемнадцать строк'));
+$('revmatrix').innerHTML = marked.parse(section(REPMD.revision, '### Матрица проверки исходных тезисов'));
+$('questions').innerHTML = marked.parse(section(REPMD.request, '## Вопросы'));
 
 const ANCH = {
-  'rep-structure': ['report', 'Предлагаемая эталонная структура'],
-  'rep-holding': ['report', 'Холдинг и юрлицо'],
-  'rep-trace': ['report', 'Трассировка к регуляторным'],
-  'rep-transform': ['report', 'Таблица трансформации'],
+  'rev-criterion': ['revision', 'Три категории описывают'],
+  'rev-group': ['revision', 'Групповой контур'],
+  'rev-18': ['revision', 'Восемнадцать строк'],
+  'rev-disputed': ['revision', 'Спорные функции'],
+  'rev-norms': ['revision', 'Авиационные нормы'],
   'req-4': ['request', '4. Роли вместо']
 };
 $('reports').innerHTML = DATA.reports.map(r =>
@@ -289,7 +300,7 @@ document.addEventListener('click', ev => {
 
 /* ---------- исправления ---------- */
 $('fixes').innerHTML = DATA.fixes.map((f, i) =>
-  '<div class="fix"><h3>' + (i + 1) + '. ' + esc(f.t) + '</h3><p class="w">' + esc(f.where) + '</p><p>' + esc(f.why) + '</p><p><a href="#' + f.ref + '">Обоснование в отчёте →</a></p></div>').join('');
+  '<div class="fix"><h3>' + (i + 1) + '. ' + esc(f.t) + '</h3><p class="w">' + esc(f.where) + '</p><p>' + esc(f.why) + '</p><p><a href="#' + f.ref + '">Обоснование →</a></p></div>').join('');
 </script>
 </body>
 </html>
