@@ -24,6 +24,6 @@ def run(steps, tag, timeout=900):
         except Exception: pids = []
         for pid in pids:
             if pid.strip().isdigit():
-                subprocess.run(['powershell.exe', '-NoProfile', '-Command', f'Stop-Process -Id {pid.strip()} -Force'])
+                subprocess.run(['powershell.exe', '-NoProfile', '-Command', f"Get-Process -Id {pid.strip()} -ErrorAction SilentlyContinue | Where-Object {{ $_.ProcessName -eq 'WINWORD' }} | Stop-Process -Force"])   # только WINWORD: номер процесса мог достаться другой программе (validator 06.10)
     log = open(wsl(tag + '.log'), encoding='utf-8-sig', errors='replace').read()
     return {'out': out, 'log': log, 'sec': round(time.time() - t0)}

@@ -134,7 +134,8 @@ def judge(doc, row, pts, cls, scan, outdated, dupfix):
     app_lines = sum(1 for m in cls['missing'] if is6_all(m) and m.get('section') == 'П')
     miss6 = [m for m in cls['missing'] if is6(m)]
     c6 = collections.Counter(m['cls'] for m in miss6)
-    nums6 = [n for n in cls['numbers'] if is6(n)]
+    # подпись рисунка/объекта (текст класса C или E) — не «неверный номер» пункта (КД-РД-Б7.006-02, A3 круг 3)
+    nums6 = [n for n in cls['numbers'] if is6(n) and not re.search(r'строка класса [CE]\b', n.get('cls', ''))]
     c15 = collections.Counter(m['cls'] for m in cls['missing'] if not is6_all(m))
     r.update(pts_total=tot, pts_match=ok, A6=c6.get('A', 0), B6=c6.get('B', 0), U6=c6.get('U', 0), C6=c6.get('C', 0), E6=c6.get('E', 0), D6=c6.get('D', 0),
              nums6=len(nums6), apps_pdf=apps_pdf, apps_word=apps_word, app_lines=app_lines, dup_bad=len(cls['duplicates']), dup_ok=len(cls['duplicates_explained']), rest15=sum(c15.values()))

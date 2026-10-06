@@ -231,13 +231,50 @@ def doc_report(doc, before, st_after, pts_after, skip_after):
 
 
 # ---------------------------------------------------------------- основной шаг
+def run_guarded(cmd, timeout, **kw):
+    """subprocess в своей группе процессов; при превышении времени — вся группа (включая воркеров) гасится, ночной запуск продолжается
+    (validator 06.10: иначе TimeoutExpired ронял запуск без записи состояния и отчёта, воркер оставался сиротой). -> True, если уложился."""
+    import signal
+    pr = subprocess.Popen(cmd, start_new_session=True, **kw)
+    try:
+        pr.wait(timeout=timeout); return True
+    except subprocess.TimeoutExpired:
+        log(f'ТАЙМ-АУТ {timeout} с: {os.path.basename(cmd[1])} — группа процессов остановлена')
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            try: os.killpg(pr.pid, sig)
+            except ProcessLookupError: break
+            try: pr.wait(timeout=30); break
+            except subprocess.TimeoutExpired: continue
+        return False
+
+
+def stop_own_word(since):
+    """Свой WINWORD по pid-файлам wordrun, созданным после since (если проверку открытия пришлось прервать). Чужие не трогаются."""
+    import wordrun
+    for f in glob.glob(os.path.join(wordrun.WIN, 'wo_*.pid')):
+        if os.path.getmtime(f) < since: continue
+        for pid in open(f, encoding='utf-8-sig', errors='ignore').read().strip().split(','):
+            if pid.strip().isdigit(): subprocess.run(['powershell.exe', '-NoProfile', '-Command', f"Get-Process -Id {pid.strip()} -ErrorAction SilentlyContinue | Where-Object {{ $_.ProcessName -eq 'WINWORD' }} | Stop-Process -Force"], capture_output=True)   # только WINWORD: номер процесса мог достаться другой программе (validator 06.10)
+
+
 def run_rebuild(docs, run_id):
-    cmd = [sys.executable, os.path.join(HERE, 'batch_run.py'), '--run-id', run_id, '--docs', ','.join(docs), '--redo', ','.join(docs)]
+    # шаг 9 (05.10.2026): сборка без Word (py-движок); Word — только проверка открытия готовых (wordopen_check) перед приёмкой
+    cmd = [sys.executable, os.path.join(HERE, 'batch_run.py'), '--run-id', run_id, '--engine', os.environ.get('CANON_ENGINE', 'py'),
+           '--docs', ','.join(docs), '--redo', ','.join(docs)]
     log('batch_run: ' + ' '.join(cmd[2:3] + cmd[3:5]) + f' ({len(docs)} док.)')
-    subprocess.run(cmd, timeout=len(docs) * 45 * 60 + 600)
+    # внешний предел не меньше внутренних (batch_run.doc_timeout: до 3 ч на документ из глав, 40 мин × (1+частей))
+    run_guarded(cmd, len(docs) * 3 * 3600 + 600)
     env = dict(os.environ, FP_RUN=run_id, FP_STEP1='/nonexistent')
     log('point_fingerprint')
-    subprocess.run([sys.executable, os.path.join(HERE, 'point_fingerprint.py')] + docs, env=env, stdout=subprocess.DEVNULL, timeout=len(docs) * 300 + 600)
+    run_guarded([sys.executable, os.path.join(HERE, 'point_fingerprint.py')] + docs, len(docs) * 300 + 600, env=env, stdout=subprocess.DEVNULL)
+    rows = list(csv.DictReader(open(os.path.join(RUNS, run_id, 'summary.csv'), encoding='utf-8-sig'), delimiter=';')) if os.path.exists(os.path.join(RUNS, run_id, 'summary.csv')) else []
+    ready = [r['doc_num'] for r in rows if r['doc_num'] in docs and r['status'] == 'ready']
+    if ready:   # проверка открытия в Word собранных py-движком (правило 1) — один Word, свой PID
+        log(f'wordopen_check: {len(ready)} док.')
+        units = sum(max(1, len(glob.glob(os.path.join(RUNS, run_id, 'out', d, 'part_*')))) for d in ready)   # многочастный — по части
+        t0 = time.time()
+        if not run_guarded([sys.executable, os.path.join(HERE, 'wordopen_check.py'), os.path.join(RUNS, run_id)] + ready, units * 900 + 600, stdout=subprocess.DEVNULL):
+            stop_own_word(t0)
 
 
 def pick_run_id(manifest):
@@ -299,6 +336,7 @@ def main():
             before = state['docs'].get(doc)
             nf = {k: list(v) for k, v in files_of(scope[doc]).items()}
             if r is None:
+                if before: before.pop('accepted', None); before.pop('accepted_status', None)   # изменился в Lotus, не пересобран — не «принят» (правило 2)
                 R += [f'### {doc}', '- СБОЙ: нет строки в summary.csv прогона (batch_run не дошёл до документа).', '']; fails.append(doc); continue
             stt = {'status': r['status'], 'error': r.get('error', ''), 'title': scope[doc].get('title', '')}
             if r['status'] in ('ready', 'not_ready'):
@@ -314,6 +352,7 @@ def main():
                 fails.append(doc)
                 if before is None: state['docs'][doc] = {'title': stt['title'], 'files': {}, 'status': r['status'], 'run': rid, 'points': {}, 'skip': '', 'rebuild': True}
                 elif r['status'] == 'failed': before['status'] = 'failed'; before['failed_key'] = files_key(nf)
+                if before is not None: before.pop('accepted', None); before.pop('accepted_status', None)   # правило 2: изменился и не пересобран — не «принят»
             R += lines[:1] + ['- Файлы: ' + '; '.join(chg[doc]) + '.'] + lines[1:]
             R.append('')
     for doc in p['deleted'] + p['left_scope']:
@@ -328,6 +367,14 @@ def main():
     R += ['## Сбои', '', (', '.join(fails) if fails else 'нет'), '']
     state['manifest_generated_at'] = manifest['generated_at']; state['updated'] = now()
     jdump(state, sp)
+    if todo:   # статусы live и приёмка пересобранных (правила 1–2): classify по ним, status_report, --accept
+        run_guarded([sys.executable, os.path.join(HERE, 'classify_missing.py'), '--run', LIVE, '--docs', ','.join(todo)], len(todo) * 1200 + 600, stdout=subprocess.DEVNULL)
+        if not run_guarded([sys.executable, os.path.join(HERE, 'status_report.py'), '--run', LIVE], 3600, stdout=subprocess.DEVNULL):
+            R += ['## Приёмка', '', 'Не выполнялась: пересчёт статусов live не уложился во время (status.csv устарел).', '']
+        else:
+          try:
+            wait = accept(False); R += ['## Приёмка', '', f'Ждут проверки открытия в Word: {", ".join(wait) or "нет"}.', '']
+          except Exception as e: R += ['## Приёмка', '', f'СБОЙ приёмки: {type(e).__name__}: {e}', '']
     rebuild_summary(state)
     finish(R, date)
     return 0
@@ -410,7 +457,9 @@ def adopt(run, docs, dry):
         old = cur.get(st['run'], {}).get(doc) if st else None
         new_s, old_s = score(r), score(old)
         line = f"{doc}: {old.get('status') if old else '—'} {old_s[1] if old else ''} ({st['run'] if st else '—'}) -> {r['status']} {new_s[1]} ({run})"
-        if new_s >= old_s: kept.append(line); continue
+        wo = word_opened() if new_s == old_s else {}
+        if new_s > old_s or (new_s == old_s and not (st and not wo.get((st['run'], doc), True) and wo.get((run, doc)))):
+            kept.append(line); continue   # при равенстве берётся новая версия, только если старая не прошла проверку в Word, а новая прошла
         pf_new = os.path.join(RUNS, run, 'points', doc + '.json')
         ok_new = pct_of(pts_of(jload(pf_new)))[1] if os.path.exists(pf_new) else 0
         if st and r['status'] != 'ready' and ok_new < pct_of(st.get('points', {}))[1]:   # суть важнее суммы строк; ready (правило 1) — по verify

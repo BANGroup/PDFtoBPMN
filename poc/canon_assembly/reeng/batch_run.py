@@ -59,7 +59,7 @@ def kill_word(slug):
         except OSError: continue
         for pid in pids:
             if pid.strip().isdigit():
-                subprocess.run(['powershell.exe', '-NoProfile', '-Command', f'Stop-Process -Id {pid.strip()} -Force -ErrorAction SilentlyContinue'], capture_output=True)
+                subprocess.run(['powershell.exe', '-NoProfile', '-Command', f"Get-Process -Id {pid.strip()} -ErrorAction SilentlyContinue | Where-Object {{ $_.ProcessName -eq 'WINWORD' }} | Stop-Process -Force"], capture_output=True)   # только WINWORD: номер процесса мог достаться другой программе (validator 06.10)
 
 
 def dedupe_docpr(path):
@@ -264,7 +264,7 @@ def run_part(run_id, doc, pid, od):
 
 
 def run_part_py(run_id, doc, pid, od, sd):
-    """Часть многочастного документа py-движком в отдельном процессе (RLIMIT_AS внутри pyengine). -> как run_part."""
+    """Часть многочастного документа py-движком в отдельном процессе (RLIMIT_AS наследуется от worker_py, batch_run.py:287). -> как run_part."""
     pod = os.path.join(od, f'part_{pid}'); os.makedirs(pod, exist_ok=True); t0 = time.time()
     psd = os.path.join(sd, '__parts', f'p{pid}')
     cmd = [sys.executable, os.path.join(HERE, 'pyengine.py'), '--src', psd, '--out', pod, '--work', os.path.join(os.path.dirname(od), '..', 'work_py', doc, f'p{pid}'), '--doc', doc]

@@ -60,12 +60,22 @@ class Numbering:
                 for il, l in self.abs[aid].items():
                     ps = _val(l, 'pStyle')
                     if ps: self.style_lvl[(aid, ps)] = il
+            # A6: abstractNum без уровней с numStyleLink берёт уровни abstractNum со styleLink того же стиля (Word так и считает; без этого ListString пустой)
+            link = {}
+            for a in numbering_root.findall(W + 'abstractNum'):
+                sl = a.find(W + 'styleLink')
+                if sl is not None and a.findall(W + 'lvl'): link[sl.get(W + 'val')] = a.get(W + 'abstractNumId')
+            for a in numbering_root.findall(W + 'abstractNum'):
+                ns = a.find(W + 'numStyleLink')
+                if ns is not None and not a.findall(W + 'lvl') and link.get(ns.get(W + 'val')):
+                    self.abs[a.get(W + 'abstractNumId')] = self.abs[link[ns.get(W + 'val')]]
             for n in numbering_root.findall(W + 'num'):
                 ov = {o.get(W + 'ilvl'): o for o in n.findall(W + 'lvlOverride')}
                 self.num[n.get(W + 'numId')] = (_val(n, 'abstractNumId'), ov)
         global _CTX
         _CTX = self; self.docdef_rpr = styles_root.find(W + 'docDefaults/' + W + 'rPrDefault/' + W + 'rPr') if styles_root is not None else None
         self._caps = {}
+        self.vcnt = {}; self.vseen = set()
         self.cnt = {}      # abstractNumId -> {ilvl: n}
         self.seen = set()  # (numId, ilvl) с применённым startOverride
         self._sty = {}
@@ -147,6 +157,17 @@ class Numbering:
 
     def step(self, p):
         """Сдвигает счётчики по абзацу; -> ListString ('' если абзац не нумерован)."""
+        tc = next((a for a in p.iterancestors() if a.tag == W + 'tc'), None)
+        if tc is not None:
+            vm = tc.find(W + 'tcPr/' + W + 'vMerge')
+            if vm is not None and vm.get(W + 'val') in (None, 'continue'):
+                # абзацы в продолжении вертикально объединённой ячейки: Word ведёт им отдельный счёт (не влияет на основной список)
+                main = (self.cnt, self.seen); self.cnt, self.seen = self.vcnt, self.vseen
+                try: return self._step(p)
+                finally: self.cnt, self.seen = main
+        return self._step(p)
+
+    def _step(self, p):
         np_ = self.numpr(p)
         if not np_: return ''
         nid, il = np_; a = self.num[nid][0]; ld = self.lvl_def(nid, il)
@@ -318,17 +339,24 @@ def number_all(doc_root, nb):
     группы (счётчик двигает только он); если нумерованного нет — собственный номер последнего."""
     body = doc_root.find(W + 'body'); out = []
     items = list(walk_paras(body))
-    nb.merged = {}
-    pend = []
+    nb.merged = {}; nb.absorbed = {}
+    pend = []; skip_cell = None
     for i, (k, el) in enumerate(items):
         if k == 'rowend': out.append((k, el, '')); pend = []; continue
         nxt = items[i + 1] if i + 1 < len(items) else None
+        if el is skip_cell:   # первый абзац таблицы, слитый с предшествующим абзацем со скрытым знаком: своей строки нет, нумерация шагает
+            nb.step(el); out.append(('p_hidden', el, '')); skip_cell = None; continue
+        if hidden_mark(el) and not pend and nxt is not None and nxt[0] == 'p' and nxt[1].getparent() is not el.getparent():
+            sib = el.getnext()
+            if sib is not None and sib.tag == W + 'tbl' and nxt[1] is next(sib.iter(W + 'p'), None):
+                # абзац со скрытым знаком перед таблицей сливается с первым абзацем первой ячейки (Word: «…в таблице 7.2.Элемент»)
+                nb.absorbed[el] = [nxt[1]]; skip_cell = nxt[1]; out.append((k, el, nb.step(el))); continue
         if hidden_mark(el) and nxt is not None and nxt[0] == 'p' and nxt[1].getparent() is el.getparent():
             pend.append((el, nb.step(el))); out.append(('p_hidden', el, '')); continue
         if pend:
             carry = next((l for _, l in pend if l), '')
-            ls = carry if carry else nb.step(el)
-            if carry and nb.numpr(el): pass   # собственная нумерация последнего абзаца не действует
+            ls = nb.step(el) if not carry else carry   # у скрытого нет номера: счётчик последнего абзаца идёт, но Word показывает пустой номер строки; номер скрытого — действует, счётчик последнего не двигается
+            if not carry: ls = ''
             nb.merged[el] = [e for e, _ in pend]; pend = []
             out.append((k, el, ls))
         else: out.append((k, el, nb.step(el)))
@@ -390,7 +418,7 @@ def dump(path, out):
         i += 1
         if k == 'rowend': lines.append(f'{i}\tT\t\t  \t{pos}')
         else:
-            t = re.sub(r'[\r\n\t\a\v]', ' ', ''.join(para_text(m) for m in nb.merged.get(el, [])) + para_text(el)) + (' ' if not intbl(el) else '  ')
+            t = re.sub(r'[\r\n\t\a\v]', ' ', ''.join(para_text(m) for m in nb.merged.get(el, [])) + para_text(el) + ''.join(para_text(m) for m in nb.absorbed.get(el, []))) + (' ' if not intbl(el) else '  ')
             if intbl(el) and False: pass
             lines.append(f'{i}\t{"T" if intbl(el) else "-"}\t{ls}\t{t}\t{pos}'); pos += len(t) + 1
     S, F = shapes_and_notes(z, doc)

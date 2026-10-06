@@ -89,7 +89,9 @@ def run_doc(sd, od, wd, doc=None):
         json.dump(v, open(os.path.join(od, 'verify.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
         if v['missing'] > 0 and os.environ.get('A2_PDF_LINES', '1') == '1':   # A2 PDF-строки (круг 2): строки класса B (нет ни в одном Word) -> из текстового слоя PDF, закладка PDF_src_*
             import pdf_lines
-            pr = pdf_lines.patch_canon(sd, od, ref_pdf, srcs)
+            try: pr = pdf_lines.patch_canon(sd, od, ref_pdf, srcs)
+            except Exception as e:   # вставка из PDF не должна ронять сборку (ПР-073-15: нет numbering part)
+                st['warnings'].append(f'pdf_lines пропущен: {type(e).__name__}: {e}'[:300]); pr = {'inserted': 0, 'items': []}
             st['pdf_lines'] = {'inserted': pr['inserted'], 'classes': {c: sum(1 for i in pr['items'] if i['cls'] == c) for c in {i['cls'] for i in pr['items']}}}
             if pr.get('verify'): v = json.load(open(os.path.join(od, 'verify.json'), encoding='utf-8'))
             if pr.get('ooxml_problems'): st['warnings'].append('ooxml после pdf_lines: ' + '; '.join(pr['ooxml_problems'])[:300])

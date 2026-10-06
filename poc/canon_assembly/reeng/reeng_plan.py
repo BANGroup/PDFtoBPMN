@@ -1050,6 +1050,8 @@ def plan_doc(ddir, slug, workdir):
                     j_ = elem_at(offs, q_)
                     if j_ not in kept_ and not (len(pkeys[j_]) > 60 and (pkeys[j_] in Ftxt_g or keys[j_] in Ftxt_g)): left += 1
             reg['destroyed'] = left
+            reg['destroyed_nontbl'] = sum(1 for q_ in retained.values() if rlo_ <= q_ < rhi_ and kids[elem_at(offs, q_)].tag != W + 'tbl')
+            if a - ptr > 0.5 * len(kids): left = max(left, GUARD_MAX + 1)   # начало региона далеко впереди последней собранной позиции: якорь ложный (ломает следующие регионы)
             if left > GUARD_MAX or reg.get('destroyed_pre', 0) > int(os.environ.get('A4_GUARD_MAX', '100')) or os.environ.get('A4_GUARD', '1') != '1':   # слишком широкое вырезание = якоря неверны (сдвиг указателя ломает следующие регионы)
                 defect('вырезание региона затрагивает сохраняемые страницы', 'смысл', where, f"между якорями {len(removed)} элементов базы, из них {left} однозначных строк нештампованных страниц эталона; регион не собран, остаётся текст базы", 'якоря региона выбраны неверно (неоднозначное вхождение строки страницы)')
                 reg['fail'] = 'вырезание затрагивает сохраняемые страницы'
