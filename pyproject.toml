@@ -11,7 +11,8 @@ dependencies = [
     "langchain-core>=0.3",
     
     # --- Document parsing ---
-    "docling>=2.70",
+    "docling>=2.131",
+    "docxcompose>=2.2",   # склейка .docx без Word (TASK-021, решение human 05.10.2026)
     
     # --- OCR (выбор по POC, установить один) ---
     # "easyocr>=1.7",          # Вариант A
