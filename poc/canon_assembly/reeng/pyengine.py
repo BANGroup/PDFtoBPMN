@@ -96,6 +96,24 @@ def run_doc(sd, od, wd, doc=None):
             if pr.get('verify'): v = json.load(open(os.path.join(od, 'verify.json'), encoding='utf-8'))
             if pr.get('ooxml_problems'): st['warnings'].append('ooxml после pdf_lines: ' + '; '.join(pr['ooxml_problems'])[:300])
             lap('pdf_lines')
+        if os.environ.get('A2_PDF_WORDS', '1') == '1':   # A2 PDF-слова (круг 3): абзац канона отличается от абзаца эталона 1–3 словами -> слова из PDF, закладка PDF_src_p*_w*
+            import pdf_words
+            keep = {f: open(os.path.join(od, f), 'rb').read() for f in ('canon.docx', 'canon_text.txt', 'verify.json') if os.path.exists(os.path.join(od, f))}
+            def restore(why):   # шаг необязательный: при сбое или ухудшении проверки канон возвращается к состоянию до него (validator 07.10)
+                for f, b_ in keep.items(): open(os.path.join(od, f), 'wb').write(b_)
+                st['warnings'].append(why[:300]); return json.load(open(os.path.join(od, 'verify.json'), encoding='utf-8'))
+            bad = lambda x: x['missing'] + x['numbered_bad'] + x['duplicates'] + x['frozen_numbers']
+            try:
+                pw = pdf_words.patch_words(sd, od, ref_pdf, srcs)
+                st['pdf_words'] = {'replaced': pw['replaced']}
+                if pw.get('verify'):
+                    v2 = json.load(open(os.path.join(od, 'verify.json'), encoding='utf-8'))
+                    if bad(v2) > bad(v): v = restore(f'pdf_words откатан: проверка ухудшилась ({bad(v)} -> {bad(v2)})'); st['pdf_words'] = {'replaced': 0, 'rolled_back': pw['replaced']}
+                    else: v = v2
+                if pw.get('ooxml_problems'): st['warnings'].append('ooxml после pdf_words: ' + '; '.join(pw['ooxml_problems'])[:300])
+            except Exception as e:   # ПР-073-15: нет numbering part — как у pdf_lines
+                v = restore(f'pdf_words пропущен: {type(e).__name__}: {e}')
+            lap('pdf_words')
         st['verify'] = {k: v[k] for k in ('lines', 'missing', 'numbered', 'numbered_bad', 'duplicates', 'frozen_numbers', 'live_numbering', 'coverage')}
         st['ready'] = v['lines'] > 0 and v['missing'] == 0 and v['numbered_bad'] == 0 and v['duplicates'] == 0 and v['frozen_numbers'] == 0
         st['error'] = ''

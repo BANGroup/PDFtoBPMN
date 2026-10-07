@@ -261,6 +261,13 @@ def run_rebuild(docs, run_id):
     # шаг 9 (05.10.2026): сборка без Word (py-движок); Word — только проверка открытия готовых (wordopen_check) перед приёмкой
     cmd = [sys.executable, os.path.join(HERE, 'batch_run.py'), '--run-id', run_id, '--engine', os.environ.get('CANON_ENGINE', 'py'),
            '--docs', ','.join(docs), '--redo', ','.join(docs)]
+    # новые .doc (листы замены, базы) — разовая конвертация в Word в кэш doc2docx до сборки (py-движок Word не запускает; 07.10:
+    # РИ-М1.005-07 упал «нет конвертации .doc»). Корпус только читается: файл копируется во временную папку Windows.
+    _, allm, _ = read_manifest()
+    dirs = [p for p in (os.path.join(REPO, allm[d]['dir']) for d in docs if d in allm) if os.path.isdir(p)]
+    if dirs:
+        log(f'doc2docx: проверка .doc в {len(dirs)} док.')
+        run_guarded([sys.executable, os.path.join(HERE, 'doc2docx.py')] + dirs, 1800, stdout=subprocess.DEVNULL)
     log('batch_run: ' + ' '.join(cmd[2:3] + cmd[3:5]) + f' ({len(docs)} док.)')
     # внешний предел не меньше внутренних (batch_run.doc_timeout: до 3 ч на документ из глав, 40 мин × (1+частей))
     run_guarded(cmd, len(docs) * 3 * 3600 + 600)
@@ -427,6 +434,7 @@ def accept(dry):
     wo = word_opened(); new, wait = [], []
     for doc, st in sorted(state['docs'].items()):
         if st.get('accepted'): continue
+        if st.get('status') not in ('ready', 'not_ready') or st.get('failed_key'): continue   # сборка упала — status.csv может хранить старую строку (07.10)
         s_ = stat.get(doc, {}).get('status')
         if s_ not in ('ready', 'ready_core'): continue
         if is_py_run(st['run']) and not wo.get((st['run'], doc)): wait.append(doc); continue
@@ -454,7 +462,7 @@ def adopt(run, docs, dry):
         if not r or doc.startswith(EXCLUDE) or doc not in sn: continue
         st = state['docs'].get(doc)
         if st and st.get('accepted'): kept.append(f'{doc}: принят {st["accepted"]} — не заменяется'); continue   # правило 2 (05.10.2026)
-        old = cur.get(st['run'], {}).get(doc) if st else None
+        old = cur.get(st['run'], {}).get(doc) if st and st.get('status') != 'failed' else None   # упавшая пересборка: прежняя строка устарела
         new_s, old_s = score(r), score(old)
         line = f"{doc}: {old.get('status') if old else '—'} {old_s[1] if old else ''} ({st['run'] if st else '—'}) -> {r['status']} {new_s[1]} ({run})"
         wo = word_opened() if new_s == old_s else {}

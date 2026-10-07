@@ -18,8 +18,12 @@ NUM_RE = re.compile(r'^(\d{1,3}(?:\.\d{1,3})*)\.?(?:\s+|$)(.*)$')
 APP_RE = re.compile(r'^[^\w(«"]{0,3}\s*(?-i:(?=[ПA]))(?:приложение|appendix|annex)\s+([0-9]{1,2}|[А-ЯA-Z])(?!\w)\s*(?:([.\-–—:])(?=\s|$))?\s*(.*)$', re.I)
 TOC_LINE = re.compile(r'[.…·_]{3,}\s*\d+\w?\s*$')   # строка оглавления: точки-заполнители и номер страницы в конце
 TCELL = '\u2063'   # метка строки-ячейки таблицы Word (в приложения по таким строкам не переходим)
+CAPTION = re.compile(r'(Рисунок|Рис\.|Figure|Fig\.)\s*[0-9А-Я]', re.I)   # подпись под рисунком — часть схемы, не текст пункта
+WIDE_GAP = float(os.environ.get('FP_WIDE_GAP', 4.0))
+SHP = '\u2064'     # метка строки текста схемы/рисунка (надпись Word; строка PDF внутри векторной схемы): в нумерации не участвует, из «ядра» пункта вырезается
 TOP, BOT = 0.125, 0.92   # зона колонтитулов (доля высоты страницы)
 STAMP = re.compile(r'(Дата введения|Основание|Изменение\s*(/\s*Revision)?\s*№|Revision\s*№)', re.I)
+STAMP_BARE = re.compile(r'(Изменение|Revision)(\s*/\s*(Изменение|Revision))?\s*$')   # колонтитул «Изменение» без номера (только в зоне колонтитулов, регистр как в штампе)
 PAGENO = re.compile(r'Стр\.?\s*/?\s*(page)?\s*\d|^\s*(page|стр\.?)\s*\d+\s*(of|из)\s*\d+\s*$', re.I)
 
 
@@ -54,7 +58,40 @@ def _rows(ws, H):
     out = []
     for yc, r in rows:
         r.sort(key=lambda w: w[0])
-        out.append((' '.join(w[4] for w in r).strip(), yc / H))
+        t = ' '.join(w[4] for w in r).strip()
+        out.append((SHP + t.replace(SHP, '') if SHP in t else t, yc / H))   # строка со словом из схемы — вся строка из схемы
+    return out
+
+
+def fig_rects(p):
+    """Области векторных схем страницы: связные группы рисунков (рамки, линии, стрелки), где есть >=2 стрелки (закрашенные многоугольники из отрезков/кривых).
+    Таблицы стрелок не содержат. Повёрнутые страницы не разбираем."""
+    if p.rotation: return []
+    try: dr = p.get_drawings()
+    except Exception: return []
+    if not 2 <= len(dr) <= 1500: return []
+    W, H = p.rect.width, p.rect.height
+    nd = []   # (rect, стрелка?)
+    for x in dr:
+        r = x['rect']; k = ''.join(i[0] for i in x['items'])
+        if r.width > 0.9 * W or r.y1 < 0.1 * H or r.y0 > 0.94 * H: continue   # линии на всю ширину и колонтитулы
+        nd.append((fitz.Rect(r) + (-4, -4, 4, 4), x.get('fill') is not None and 're' not in k.replace('relll', 'l') and (k.count('l') >= 3 or 'c' in k)))
+    if sum(1 for _, ar in nd if ar) < 2: return []   # без стрелок схемы нет (быстрый выход: таблицы на сотни прямоугольников)
+    par = list(range(len(nd)))
+    def f(i):
+        while par[i] != i: par[i] = par[par[i]]; i = par[i]
+        return i
+    for i in range(len(nd)):
+        for j in range(i + 1, len(nd)):
+            if nd[i][0].intersects(nd[j][0]): par[f(i)] = f(j)
+    comp = collections.defaultdict(list)
+    for i in range(len(nd)): comp[f(i)].append(i)
+    out = []
+    for g in comp.values():
+        if sum(1 for i in g if nd[i][1]) >= 2:
+            r = fitz.Rect(nd[g[0]][0])
+            for i in g: r |= nd[i][0]
+            out.append(r)
     return out
 
 
@@ -133,9 +170,24 @@ def split_columns_bands(units, W, H):
     return None
 
 
-def split_columns_words(ws, W):
-    """Запасной вариант (как раньше): щель без слов по словам страницы."""
-    if len(ws) < 60: return None
+def _wide_rows(ws, x):
+    """Слова строк, идущих через щель x (заголовки на всю ширину): слово пересекает x либо между соседними словами строки через x нет зазора колонок (>= WIDE_GAP пт)."""
+    rows = []
+    for w in sorted(ws, key=lambda w: ((w[1] + w[3]) / 2, w[0])):
+        yc = (w[1] + w[3]) / 2
+        if rows and abs(rows[-1][0] - yc) <= max(2.5, 0.35 * (w[3] - w[1])): rows[-1][1].append(w)
+        else: rows.append([yc, [w]])
+    wide = []
+    for _, r in rows:
+        r.sort(key=lambda w: w[0])
+        if any(w[0] < x < w[2] for w in r): wide += r; continue
+        pairs = [(p, q) for p, q in zip(r, r[1:]) if p[2] <= x <= q[0]]
+        if pairs and pairs[0][1][0] - pairs[0][0][2] < WIDE_GAP: wide += r
+    return {id(w) for w in wide}
+
+
+def _words_strict(ws, W):
+    """Прежний строгий разбор: единственный x с наименьшим числом пересечённых слов (<=3), ближайший к середине страницы."""
     best = None
     for x in range(int(0.38 * W), int(0.62 * W), 2):
         st = sum(1 for w in ws if w[0] < x < w[2])
@@ -153,12 +205,39 @@ def split_columns_words(ws, W):
     return None
 
 
+def split_columns_words(ws, W, relax=False):
+    """Запасной вариант (как раньше): щель без слов по словам страницы. Кандидаты — x, через которые идёт не больше 3 слов (или 3 % слов:
+    заголовки на всю ширину); выбирается тот, где языки разделены лучше всего (раньше — просто ближайший к середине страницы).
+    relax (3 % слов вместо 3 слов) — только для документов, где колонки уже найдены на других страницах (иначе двуязычные таблицы приложений
+    ложно делились бы на «русский/английский» потоки, а в Word они идут одной таблицей). Строки на всю ширину (заголовок «РУССКИЙ / ENGLISH») целиком уходят в русский поток, как у блочного разбора."""
+    if len(ws) < 60: return None
+    if not relax: return _words_strict(ws, W)
+    lim = max(3, 0.03 * len(ws))
+    best = None
+
+    def share(g, k):
+        kn = [_wl(w) for w in g if _wl(w)]
+        return (kn.count(k) / len(kn), len(kn)) if kn else (0, 0)
+    for x in range(int(0.38 * W), int(0.62 * W), 2):
+        if sum(1 for w in ws if w[0] < x < w[2]) > lim: continue
+        wd = _wide_rows(ws, x)
+        L = [w for w in ws if id(w) not in wd and (w[0] + w[2]) / 2 < x]; R = [w for w in ws if id(w) not in wd and (w[0] + w[2]) / 2 >= x]
+        Wd = [w for w in ws if id(w) in wd]
+        for a, b in ((L + Wd, R), (R + Wd, L)):
+            sa, na = share(a, 'c'); sb, nb = share(b, 'l')
+            if sa >= 0.75 and sb >= 0.75 and na >= 20 and nb >= 20:
+                sc = (min(sa, sb), -abs(x - W / 2))
+                if best is None or sc > best[0]: best = (sc, a, b)
+    return (best[1], best[2]) if best else None
+
+
 def pdf_lines(path):
     """Строки эталона без колонтитулов/штампов/мусора.
     Возвращает (lines, lines_en, flags, line_pages, bad_pages): lines_en — английская колонка двуязычных страниц."""
     d = fitz.open(path)
     pages = []     # на страницу: (строки основной колонки, строки английской колонки)
     flags = set()
+    later = []   # страницы, где строгий разбор по словам не нашёл колонок (см. relax)
     for p in d:
         H = p.rect.height
         us, dirs = [], []
@@ -173,11 +252,18 @@ def pdf_lines(path):
         elif dr == (0, 1): tf = lambda b: (b[1], UW - b[2], b[3], UW - b[0]); W, H2 = UH, UW
         else: tf = lambda b: tuple(b); W, H2 = UW, UH
         us = [(*tf(b), t, bi) for b, t, bi in us]
+        fr = fig_rects(p) if dr == (1, 0) else []
+        if fr: us = [(x0, y0, x1, y1, SHP + t if any(r.contains(fitz.Point((x0 + x1) / 2, (y0 + y1) / 2)) for r in fr) else t, bi) for x0, y0, x1, y1, t, bi in us]
         sp = split_columns(us, W, H2) or split_columns_bands(us, W, H2)
         if sp is None and dr == (1, 0):   # блоки не дали колонок — запасной разбор по щели между словами (только неповёрнутые страницы)
             ws = p.get_text('words'); sw = split_columns_words(ws, p.rect.width)
+            later.append((len(pages), p, H2))
             if sw: pages.append((_rows(sw[0], H2), _rows(sw[1], H2))); continue
         pages.append((_rows(sp[0], H2), _rows(sp[1], H2)) if sp else (_rows(us, H2), []))
+    if later and sum(1 for _, le in pages if le) >= max(3, 0.1 * len(pages)):   # двуязычный документ: страницы разбираются по словам мягче (и те, что строгий разбор уже поделил — x подбирается по языкам)
+        for i, p, H2 in later:
+            sw = split_columns_words(p.get_text('words'), p.rect.width, relax=True)
+            if sw: pages[i] = (_rows(sw[0], H2), _rows(sw[1], H2))
     n = len(pages)
     allp = [ls + le for ls, le in pages]
     cnt = collections.Counter()
@@ -196,6 +282,7 @@ def pdf_lines(path):
             if not t: continue
             if garbage(t): nb += 1; continue
             if PAGENO.search(t) or STAMP.match(t.strip()): continue
+            if (rel < TOP or rel > BOT) and STAMP_BARE.match(t.strip()): continue
             k = norm(re.sub(r'\d+', '', t))
             if k and n >= 4 and (rel < TOP or rel > BOT):   # колонтитул: строка повторяется или целиком из слов колонтитула
                 ws = [norm(w) for w in re.split(r'[\s\-]+', re.sub(r'\d+', ' ', t)) if norm(w)]
@@ -238,11 +325,22 @@ def word_lines(path):
             seq.append(shapes[si]); si += 1
         seq.append(r)
     seq.extend(shapes[si:])
+    # штамп страницы, попавший в тело Word (таблица колонтитула: «Дата введения изменения», «Основание:___», «Стр. N из M»): вся подряд идущая таблица — не текст
+    drop = set()
+    i = 0
+    while i < len(seq):
+        if seq[i][0] != 'T': i += 1; continue
+        j = i
+        while j < len(seq) and seq[j][0] == 'T': j += 1
+        run = [r[2] for r in seq[i:j]]
+        if j - i <= 14 and any(re.search(r'Дата введения изменения|Основание\s*:\s*_|Стр\.?\s*\d+\w?\s*(из|/)\s*\d+', x) for x in run): drop.update(range(i, j))
+        i = j
     out = []
-    for kind, ls, tx, pos in seq:
+    for n, (kind, ls, tx, pos) in enumerate(seq):
+        if n in drop: continue
         s = (ls + ' ' + tx).strip() if ls and re.search(r'[0-9A-Za-zА-Яа-я]', ls) else tx
         s = re.sub(r'^[\uf000-\uf8ff•·▪‒–—\-]+\s*(?=\d+(?:\.\d+)+\s)', '', s)   # маркер-пуля перед набранным номером
-        if s: out.append((TCELL + s) if kind == 'T' else s)
+        if s: out.append((TCELL + s) if kind == 'T' else (SHP + s) if kind == 'S' else s)
     return out
 
 
@@ -250,6 +348,12 @@ def word_lines(path):
 def headlike(rest):
     rest = rest.strip()
     return 2 <= len(rest) <= 320 and not re.search(r'[;,:]$', rest) and (rest[:1].isupper() or rest[:1].isdigit())
+
+
+def upper_head(rest):
+    """Заголовок раздела прописными, перенесённый на вторую строку (первая кончается запятой/двоеточием): «10 УЧАСТИЕ В РАБОТЕ КОМИССИИ, ПРОВОДИМОМУ ПО …,»."""
+    let = re.findall(r'[A-Za-zА-Яа-яЁё]', rest)
+    return len(let) >= 8 and sum(c.isupper() for c in let) >= 0.9 * len(let) and len(rest) <= 320
 
 
 def toc_key(rest):
@@ -288,8 +392,9 @@ def find_start(lines):
 def segment(lines, start=None, allow_dup=False, lenient=False):
     """Список пунктов [{num, lang, lines}] с раздела 6. num: '6.1', '7.2.5@en', 'прил.3'. start — индекс начала (иначе ищется)."""
     tc = [l.startswith(TCELL) for l in lines]
-    lines = [l.lstrip(TCELL) for l in lines]
-    st = find_start(lines) if start is None else start
+    sh = [l.startswith(SHP) for l in lines]
+    lines = [l.lstrip(TCELL + SHP) for l in lines]
+    st = find_start([('' if x else l) for l, x in zip(lines, sh)]) if start is None else start
     if st is None: return None, 'нет раздела 6', None
     pts = []
     seen = {}      # кортеж -> {lang: key}
@@ -298,6 +403,7 @@ def segment(lines, start=None, allow_dup=False, lenient=False):
     m0 = NUM_RE.match(lines[st].strip()) if st is not None else None
     top = (int(m0.group(1).split('.')[0]) - 1) if m0 else 5   # так заголовок раздела 6 тоже становится пунктом '6'
     in_app = False
+    cap_prev = False
     junk = []
     apps_seen = set()
 
@@ -319,6 +425,14 @@ def segment(lines, start=None, allow_dup=False, lenient=False):
     for i in range(st, len(lines)):
         l = lines[i].strip()
         if not l or TOC_LINE.search(l): continue   # оглавление — не пункт (заголовок тела с тем же номером остаётся пунктом)
+        l = re.sub(r'^[-–—•·▪]\s+(?=\d+(?:\.\d+)+\s+\S)', '', l) if not tc[i] else l   # маркер-тире перед набранным номером («- 21.3.2 Основной …»)
+        cap = CAPTION.match(l) and len(l) <= 200 and not tc[i] and not in_app
+        # подпись переносится на вторую строку («Рисунок 1 Схема … оперативной смены ОПДО каналов и средств» / «связи»): короткая строчная строка следом — тоже подпись
+        cont = cap_prev and len(l) <= 100 and l[:1].islower() and not NUM_RE.match(l)
+        cap_prev = bool(cap)
+        if sh[i] or cap or cont:   # текст схемы/рисунка: в нумерации не участвует, лежит в пункте под меткой (ядро пункта его не берёт)
+            if cur is not None: cur['lines'].append(SHP + l)
+            continue
         ma = None if tc[i] or re.search(r'[.…·_]{4,}', l) else APP_RE.match(l)
         if ma and len(l) <= 160 and ma.group(1) not in apps_seen and not (ma.group(3) and ma.group(3)[:1].islower()) \
                 and (ma.group(2) or not ma.group(3) or ma.group(3).startswith('(')) and not re.search(r'[,;]$', l):   # «Приложение 3 Приказ о …» без точки — строка таблицы
@@ -336,7 +450,7 @@ def segment(lines, start=None, allow_dup=False, lenient=False):
             tup = tuple(int(x) for x in m.group(1).split('.'))
             rest = m.group(2)
             if len(tup) == 1:
-                ok = tup[0] in (top + 1, top + 2) and rest.strip() != '' and headlike(rest)
+                ok = tup[0] in (top + 1, top + 2) and rest.strip() != '' and (headlike(rest) or upper_head(rest))
                 if ok:   # заголовок раздела: слова заглавными либо следом (≤8 строк) идёт «N.1» (строки таблиц «10 …» — не заголовки)
                     let = re.findall(r'[A-Za-zА-Яа-яЁё]', rest)
                     up = let and sum(c.isupper() for c in let) >= 0.8 * len(let)
@@ -372,16 +486,49 @@ def segment(lines, start=None, allow_dup=False, lenient=False):
     return pts, ('лишний знак перед номером: ' + '; '.join(junk[:3])) if junk else '', st
 
 
+TAIL_HEAD = re.compile(r'(?:^|(?<=[а-яё.,;:)\d]))\s*\d{1,2}(?:\.\d{1,2})*\.?\s*(?=[А-ЯЁ][А-ЯЁ0-9\s,()\-/«»".]{11,}$)')
+
+
+def cut_tail(p):
+    """Граница пункта: к концу пункта прилип заголовок следующего раздела прописными («… ответственность. 10 УЧАСТИЕ В РАБОТЕ КОМИССИИ …») — вырезаем.
+    Строка заголовка целиком или хвост последней строки; пункт, заголовок которого сам прописной (первая строка), не трогаем."""
+    ls = p['lines']
+    def head(x):
+        m = NUM_RE.match(x.strip())
+        if not m or not m.group(2).strip(): return False
+        let = re.findall(r'[A-Za-zА-Яа-яЁё]', m.group(2))
+        return len(let) >= 8 and sum(c.isupper() for c in let) >= 0.9 * len(let)
+    for j in range(len(ls) - 1, 0, -1):
+        if ls[j].startswith(SHP): continue
+        if head(ls[j]) and all(not x.startswith(SHP) and (len(x) < 150 or head(x)) for x in ls[j + 1:]) and len(ls) - j <= 4:
+            p['lines'] = ls[:j]; return
+        if j < len(ls) - 1 and not ls[j + 1].isupper(): break
+    last = ls[-1] if ls else ''
+    if ls and not last.startswith(SHP):
+        m = TAIL_HEAD.search(last)
+        if m and m.start() > (0 if len(ls) > 1 else 30):   # у однострочного пункта слева должен остаться текст (иначе это его собственный заголовок)
+            ls[-1] = last[:m.start()].rstrip()
+            if not ls[-1]: ls.pop()
+
+
 # ---------------------------------------------------------------- отпечатки
 def fingerprint(p):
-    text = '\n'.join(p['lines'])
-    # без номера в начале: у пункта номер — первая «лексема» первой строки
-    first = p['lines'][0] if p['lines'] else ''
-    first = NUM_RE.sub(lambda m: m.group(2), first, count=1) if p['tup'] is not None else APP_RE.sub(lambda m: m.group(3) or '', first, count=1)
-    body = ' '.join([first] + p['lines'][1:])
+    """fp — по всему тексту пункта; fp_core — «ядро»: без строк схем/рисунков (метка SHP: надписи Word, текст векторных схем PDF), без хвостовых
+    номеров без текста и без прилипшего в конец заголовка следующего раздела. Совпадение по ядру только добавляет совпадения (fp не меняется)."""
+    def one(lines):
+        first = lines[0] if lines else ''
+        # без номера в начале: у пункта номер — первая «лексема» первой строки
+        first = NUM_RE.sub(lambda m: m.group(2), first, count=1) if p['tup'] is not None else APP_RE.sub(lambda m: m.group(3) or '', first, count=1)
+        return ' '.join([first] + lines[1:])
+    body = one([x.lstrip(SHP) for x in p['lines']])
     flat = norm(body)
+    cl = {'lines': [x for x in p['lines'] if not x.startswith(SHP)]}
+    while len(cl['lines']) > 1 and re.match(r'^\d{1,3}(?:\.\d{1,3})*\.?$', cl['lines'][-1].strip()) and re.search(r'[.;:!?)»"]\s*$', cl['lines'][-2]): cl['lines'].pop()   # не продолжение фразы («… на рисунке» / «1.»)   # хвостовой номер без текста (пустой пронумерованный абзац Word)
+    cut_tail(cl)
+    core = norm(one(cl['lines']))
     # fp_set: отсортированный набор знаков — не зависит ни от порядка строк/ячеек таблицы, ни от переносов внутри слов
-    return {'fp': sha(flat), 'fp_set': sha(''.join(sorted(flat))), 'chars': len(flat), 'text': re.sub(r'\s+', ' ', body).strip()}
+    return {'fp': sha(flat), 'fp_set': sha(''.join(sorted(flat))), 'fp_core': sha(core), 'chars': len(flat), 'text': re.sub(r'\s+', ' ', body).strip(),
+            'core_text': re.sub(r'\s+', ' ', one(cl['lines'])).strip()}
 
 
 def wdiff(a, b, lim=300):
@@ -418,6 +565,8 @@ def compare(pp, wp):
         a, b = P[n]['fp'], W[n]['fp']
         r = {'num': n, 'pdf': a['fp'], 'word': b['fp'], 'pdf_chars': a['chars'], 'word_chars': b['chars'], 'head': a['text'][:100]}
         if a['fp'] == b['fp']: r['status'] = 'совпадает'
+        elif a['fp_core'] == b['fp_core']:
+            r['status'] = 'совпадает'; r['note'] = 'по ядру: без текста схем/рисунков, хвостовых номеров и прилипшего заголовка следующего раздела'
         elif a['fp_set'] == b['fp_set']:
             r['status'] = 'совпадает (порядок иной)'
             if n.startswith('прил.'): r['note'] = 'схема/таблица — сверка по набору знаков (fp_set)'

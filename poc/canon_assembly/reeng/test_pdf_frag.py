@@ -132,3 +132,28 @@ def test_classify_variants(tmp_path):
     out = PL.classify([('1', 'отчѐта'), ('1', 'вкраплений знаком'), ('1', 'совсем другая строка текста')], str(sd))
     # с 05.10 pagediff.key сам приводит NFC и ё/ѐ->е, ѝ->и: варианты написания — это та же строка Word (класс A), а не отдельный «variant»
     assert [o['cls'] for o in out] == ['A', 'A', 'B']
+
+
+# ---------------- pdf_words: замена 1–3 слов канона словами PDF ----------------
+import pdf_words as PW
+
+C1 = 'Программа гарантии качества формируется на следующий год согласно приложению в срок до декабря. Ответственный за формирование – начальник управления качества.'
+
+
+def test_words_replace_ok():
+    r = PW.plan_edits(C1, C1.replace('управления', 'службы'))
+    assert r and [(o[3], o[4], o[2]) for o in r[0]] == [('replace', 'управления', 'службы')]
+
+
+def test_words_reject_interior_delete_and_script_and_head():
+    assert PW.plan_edits(C1, C1.replace('согласно ', '')) is None                       # удаление внутри абзаца ненадёжно
+    assert PW.plan_edits(C1, C1.replace('управления', 'management')) is None           # другой алфавит
+    assert PW.plan_edits(C1, C1.replace('Программа', 'программа')) is None             # регистр не различие (key)
+    assert PW.plan_edits(C1, 'а ' + C1[C1.index(' ') + 1:]) is None                     # начало абзаца PDF — продолжение страницы
+
+
+def test_words_tail_insert_complete_paragraph():
+    a = 'Регистрация не может быть завершена до того момента, пока пассажир не подтвердит ознакомление с ограничениями при перевозке'
+    r = PW.plan_edits(a, a + ' багажа.')
+    assert r and r[0][0][3] == 'insert'
+    assert PW.plan_edits(a, a + ' багажа') is None                                      # PDF-абзац без точки — возможно обрыв
