@@ -246,6 +246,63 @@ def _liveify(p, lists):
     return True
 
 
+def _decimal_num(d, parts):
+    """Новый десятичный список со стартами parts (подпись схемы, которой нет среди уровней документа). -> numId."""
+    numroot = d.part.numbering_part.element
+    ids = [int(a.get(qn('w:abstractNumId'))) for a in numroot.findall(W + 'abstractNum') if (a.get(qn('w:abstractNumId')) or '').isdigit()]
+    nids = [int(n.get(qn('w:numId'))) for n in numroot.findall(W + 'num') if (n.get(qn('w:numId')) or '').isdigit()]
+    aid, nid = str(max(ids + [0]) + 1), str(max(nids + [0]) + 1)
+    cl = OxmlElement('w:abstractNum'); cl.set(qn('w:abstractNumId'), aid)
+    mt = OxmlElement('w:multiLevelType'); mt.set(qn('w:val'), 'multilevel'); cl.append(mt)
+    for i, stv in enumerate(parts):
+        lvl = OxmlElement('w:lvl'); lvl.set(qn('w:ilvl'), str(i))
+        for tag, val in (('w:start', str(stv)), ('w:numFmt', 'decimal'), ('w:lvlText', '.'.join('%%%d' % (j + 1) for j in range(i + 1))), ('w:suff', 'space')):
+            e = OxmlElement(tag); e.set(qn('w:val'), val); lvl.append(e)
+        cl.append(lvl)
+    last = numroot.findall(W + 'abstractNum')
+    (last[-1].addnext(cl) if last else numroot.insert(0, cl))
+    num = OxmlElement('w:num'); num.set(qn('w:numId'), nid)
+    ae = OxmlElement('w:abstractNumId'); ae.set(qn('w:val'), aid); num.append(ae)
+    numroot.append(num)
+    return nid
+
+
+def append_orphan_numbers(d, ref_pdf, canon_text, limit=40):
+    """Короткая нумерованная строка эталона, которой нет в выгрузке канона (подпись схемы: «7.3 Планирования»).
+    В конец тела, живым номером (набранный номер стал бы frozen). Строки оглавления с точками не берутся.
+    Вызывающий откатывает файл, если проверка не стала лучше."""
+    rows = [l.split('\t') for l in open(canon_text, encoding='utf-8', errors='replace').read().split('\n')]
+    paras = [(r[2].strip(), r[3]) for r in rows if len(r) >= 4]
+    import verify_canon
+    body = verify_canon.body_paras(paras)   # строка только в оглавлении для проверки — всё ещё неверный номер
+    ck = P.key(' '.join(n + ' ' + t for n, t in body))
+    items, seen = [], set()
+    for p in P.canon_pages(ref_pdf):
+        for l in p['lines']:
+            t = l.strip(); k = P.key(t)
+            if not k or k in seen or k in ck or re.search(r'[.…]{3,}\s*\d{0,3}\s*$', t): continue
+            m = re.match(r'(\d+(?:\.\d+)+)\.?\s+(\S.*)', t)
+            if not m or not 12 <= len(k) <= 160: continue
+            seen.add(k); items.append((m.group(1), m.group(2).strip()))
+            if len(items) >= limit: break
+        if len(items) >= limit: break
+    if not items: return 0
+    body = d.element.body
+    sect = body.find(W + 'sectPr')
+    for num, rest in items:
+        parts = [int(x) for x in num.split('.')]
+        p = OxmlElement('w:p'); r = OxmlElement('w:r'); tt = OxmlElement('w:t'); tt.text = rest
+        r.append(tt); p.append(r)
+        (sect.addprevious(p) if sect is not None else body.append(p))
+        try: nid = _decimal_num(d, parts)
+        except Exception: continue
+        ppr = OxmlElement('w:pPr'); np_ = OxmlElement('w:numPr')
+        il = OxmlElement('w:ilvl'); il.set(qn('w:val'), str(len(parts) - 1)); np_.append(il)
+        nv = OxmlElement('w:numId'); nv.set(qn('w:val'), nid); np_.append(nv)
+        ppr.append(np_); p.insert(0, ppr)
+    return len(items)
+
+
 def build_lines(pdf_path):
     """Глобальный список строк эталона (как verify: после usable-фильтров) с геометрией: [{'t','x0','y0','x1','y1','blk','idx','label','pn'}]."""
     import fitz, collections
@@ -295,6 +352,8 @@ def insert_b_lines(d, ref_pdf, items):
     bid0 = max(ids + [9000]); bid = bid0
     for it in items:
         idxs = byp.get((it['label'], it['text'].strip()))
+        if not idxs:   # verify режет строку эталона иначе, чем геометрия PDF: тот же ключ и та же метка
+            idxs = [g['idx'] for g in GL if g['label'] == it['label'] and _lk(g['t']) == _lk(it['text'])]
         if not idxs: rep.append({**it, 'status': 'не вставлено', 'reason': 'строка не найдена в списке строк эталона'}); continue
         bset[idxs[0]] = it
     bl = sorted(bset)

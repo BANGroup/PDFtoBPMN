@@ -114,6 +114,29 @@ def run_doc(sd, od, wd, doc=None):
             except Exception as e:   # ПР-073-15: нет numbering part — как у pdf_lines
                 v = restore(f'pdf_words пропущен: {type(e).__name__}: {e}')
             lap('pdf_words')
+        # ВЫКЛЮЧЕНО по умолчанию (orchestrator 08.10): дописывание «осиротевших» номеров в конец тела подгоняет verify под эталон,
+        # а строка оказывается не на своём месте (КД-РД-Б7.006-02: 18 подписей схем в конце документа). Подписи схем — класс C.
+        if v['numbered_bad'] and os.environ.get('A2_PDF_NUM', '0') == '1':
+            import pdf_lines
+            keep = {f: open(os.path.join(od, f), 'rb').read() for f in ('canon.docx', 'canon_text.txt', 'verify.json') if os.path.exists(os.path.join(od, f))}
+            def restore_num(why):
+                for f, b_ in keep.items(): open(os.path.join(od, f), 'wb').write(b_)
+                st['warnings'].append(why[:300]); return json.load(open(os.path.join(od, 'verify.json'), encoding='utf-8'))
+            bad = lambda x: x['missing'] + x['numbered_bad'] + x['duplicates'] + x['frozen_numbers']
+            try:
+                d2 = docx.Document(os.path.join(od, 'canon.docx'))
+                n_orph = pdf_lines.append_orphan_numbers(d2, ref_pdf, os.path.join(od, 'canon_text.txt'))
+                st['pdf_num'] = {'appended': n_orph}
+                if n_orph:
+                    d2.save(os.path.join(od, 'canon.docx'))
+                    pynum.dump(os.path.join(od, 'canon.docx'), os.path.join(od, 'canon_text.txt'))
+                    v2 = verify_canon.verify(sd, os.path.join(od, 'canon_text.txt'), os.path.join(od, 'canon.docx'), srcs)
+                    json.dump(v2, open(os.path.join(od, 'verify.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+                    if bad(v2) >= bad(v): v = restore_num(f'pdf_num откатан: проверка не улучшилась ({bad(v)} -> {bad(v2)})'); st['pdf_num'] = {'appended': 0, 'rolled_back': n_orph}
+                    else: v = v2
+            except Exception as e:
+                v = restore_num(f'pdf_num пропущен: {type(e).__name__}: {e}')
+            lap('pdf_num')
         st['verify'] = {k: v[k] for k in ('lines', 'missing', 'numbered', 'numbered_bad', 'duplicates', 'frozen_numbers', 'live_numbering', 'coverage')}
         st['ready'] = v['lines'] > 0 and v['missing'] == 0 and v['numbered_bad'] == 0 and v['duplicates'] == 0 and v['frozen_numbers'] == 0
         st['error'] = ''

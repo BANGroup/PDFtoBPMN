@@ -564,6 +564,20 @@ class NoBase(Exception):
     def __init__(self, status, msg): super().__init__(msg); self.status = status
 
 
+def as_sheet(f):
+    """Файл — страницы замены. «листы изменения» — страницы замены; «лист изменения стр. N» — тоже страница, не протокол.
+    Протокол без номера страницы в имени («лист изменения», «лист изменений») остаётся протоколом."""
+    name = os.path.basename(f).lower()
+    if re.search(r'листы\s+изменени', name): return True
+    if re.search(r'лист\w*\s+изменени\w*.{0,24}стр', name): return True
+    return classify(f) == 'sheets'
+
+
+def named_sheet(f):
+    """Имя файла само называет листы замены (не любой docx, лежащий рядом с базой)."""
+    return bool(re.search(r'замен|зам\s+лист|листы\s+изменени', os.path.basename(f).lower()))
+
+
 def plan_doc(ddir, slug, workdir):
     ddir = os.path.abspath(ddir)
     docname = os.path.basename(ddir)
@@ -608,7 +622,13 @@ def plan_doc(ddir, slug, workdir):
         m = re.search(r'изм([\d.]+)', adir)
         if not m: continue
         k = int(float(m.group(1)))
-        amend[k] = (sorted(f for f in pd.adocx(adir) if classify(f) == 'sheets'), [f for f in pd.adocx(adir) if classify(f) == 'changelog'])
+        files = pd.adocx(adir)
+        amend[k] = (sorted(f for f in files if as_sheet(f)), [f for f in files if classify(f) == 'changelog' and not as_sheet(f)])
+    loose = [f for f in wall if f != base_src and f.lower().endswith('.docx') and named_sheet(f)]
+    if loose:   # листы замены лежат в word/ рядом с базой, а не в папке изменения (СТ-041-10)
+        k = (max(amend) + 1) if amend else 1
+        amend[k] = (sorted(loose), [])
+        plan['notes'].append('word/: листы замены вне папок изменений, изм%d: %s' % (k, ', '.join(os.path.basename(f) for f in loose)))
     allsheets = [f for k in sorted(amend) for f in amend[k][0]]
     base_dump = os.path.join(workdir, 'base_dump.txt')
     ensure_dumps(slug, workdir, allsheets)
@@ -826,6 +846,19 @@ def plan_doc(ddir, slug, workdir):
                 if q_ != -1:
                     if S.find(k_, q_ + 1) == -1: retained[k_] = q_; retained_pg[k_] = pi_
                     break
+    line_pos = {}   # ключ строки нештампованной страницы -> вхождения в базе (не больше 6); для спасения, когда строка не однозначна, но все копии внутри вырезания
+    for p_ in pages:
+        if p_['izm'] != 0 or p_['pdf'] or not p_['label']: continue
+        for l_ in usable_lines(p_, head):
+            l_ = LIST_MARK.sub('', l_)
+            for kk in (key(l_), key(stripnum(l_))):
+                if len(kk) < MINLEN or kk in line_pos: continue
+                pos, hits = 0, []
+                while len(hits) <= 6:
+                    q = S.find(kk, pos)
+                    if q < 0: break
+                    hits.append(q); pos = q + len(kk)
+                line_pos[kk] = hits
     GUARD_MAX = int(os.environ.get('A2_GUARD_MAX', '5'))
     tbl_rows_cache = {}
     def tbl_rows(i):
@@ -989,11 +1022,17 @@ def plan_doc(ddir, slug, workdir):
             a = elem_at(offs, A[1] - 1)
             b = elem_at(offs, B[0]) if B else len(kids) - (1 if kids[-1].tag == W + 'sectPr' else 0)
             if B and b < a or (B and b == a and kids[a].tag != W + 'tbl'):
-                defect('якорь не найден', 'смысл', where, f"якоря конца стр.{prevp['label'] if prevp else 'титул'} и начала стр.{nextp['label']} в одном абзаце базы", 'регион внутри одного абзаца'); continue
+                if not (B and b == a and kids[a].tag == W + 'p'):
+                    defect('якорь не найден', 'смысл', where, f"якоря конца стр.{prevp['label'] if prevp else 'титул'} и начала стр.{nextp['label']} в одном абзаце базы", 'регион внутри одного абзаца'); continue
+                if os.environ.get('G_SAME', '0') != '1':   # ВЫКЛЮЧЕНО (orchestrator 08.10): вставка следом оставляет старую редакцию рядом с новой (КД-ДП-В4.036-01: 7.2 дважды), verify этого не видит
+                    defect('якорь не найден', 'смысл', where, f"якоря конца стр.{prevp['label'] if prevp else 'титул'} и начала стр.{nextp['label']} в одном абзаце базы", 'регион внутри одного абзаца'); continue
+                reg['same_para'] = True   # страница замены внутри одного абзаца: абзац не режем, лист вставляется следом
             if kids[a].tag == W + 'tbl': reg['row_a'] = row_at(a, A[1] - 1 - offs[a])
             if B and kids[b].tag == W + 'tbl': reg['row_b'] = row_at(b, B[0] - offs[b])
-            if B and b == a and reg.get('row_b', 0) <= reg.get('row_a', 0):
-                defect('якорь не найден', 'смысл', where, 'якоря региона в одной строке таблицы базы', 'регион внутри одной строки таблицы'); continue
+            if B and b == a and kids[a].tag == W + 'tbl' and reg.get('row_b', 0) <= reg.get('row_a', 0):
+                if os.environ.get('G_SAME', '0') != '1':   # ВЫКЛЮЧЕНО (orchestrator 08.10): как same_para — старая строка таблицы остаётся рядом с новой (РИ-Б8.014-07)
+                    defect('якорь не найден', 'смысл', where, 'регион внутри одной строки таблицы базы', 'регион внутри одной строки таблицы'); continue
+                reg['same_row'] = True   # страница замены внутри одной строки таблицы: таблицу не режем, лист вставляется следом
         if not service_mode and A and prevp and kids[a].tag == W + 'p' and A[1] == offs[a] + len(keys[a]):
             # хвост предыдущей страницы эталона вне текстового потока базы (строки рисунка/объекта) -> рисунки без текста сразу после якоря её
             lk = _ks(usable_lines(prevp, head))
@@ -1004,10 +1043,27 @@ def plan_doc(ddir, slug, workdir):
                 reg['kept_objects_after_anchor'] = a - elem_at(offs, A[1] - 1)
         # разрезанные абзацы (только простые абзацы w:p)
         tail_a = head_b = ''
-        if A and kids[a].tag == W + 'p' and not reg.get('kept_objects_after_anchor'):
+        if reg.get('same_para'):
+            A_tail = None
+        else:
+            A_tail = A
+        if A_tail and kids[a].tag == W + 'p' and not reg.get('kept_objects_after_anchor'):
             tail_a = keys[a][A[1] - offs[a]:]
             if not re.search(r'[а-яa-z]', tail_a): tail_a = ''
-        if B and kids[b].tag == W + 'p':
+            if prevp and tail_a:   # хвост абзаца-якоря ещё содержит строки нештампованной страницы: это её текст, не начало региона
+                Ftail = ''.join(''.join(sec['nkeys'][sec['s']:sec['e'] + 1]) for _, sec, _ in uniq if not sec.get('pdf'))
+                rest = keys[a][A[1] - offs[a]:]
+                extra = 0
+                for l_ in usable_lines(prevp, head):
+                    for kk in (key(l_), key(stripnum(l_))):
+                        if len(kk) < MINLEN or kk in Ftail: continue
+                        q = rest.find(kk)
+                        if q != -1: extra = max(extra, q + len(kk))
+                if extra:
+                    A = (A[0], A[1] + extra, A[2], A[3]); reg['anchor_tail_kept'] = extra
+                    tail_a = keys[a][A[1] - offs[a]:]
+                    if not re.search(r'[а-яa-z]', tail_a): tail_a = ''
+        if B and kids[b].tag == W + 'p' and not reg.get('same_para'):
             hb = keys[b][:B[0] - offs[b]]
             hb = hb[lslen[b]:] if hb.startswith(key(bnums.get((b, 0)) or '')) else hb
             head_b = hb if re.search(r'[а-яa-z]', hb) else ''
@@ -1032,13 +1088,15 @@ def plan_doc(ddir, slug, workdir):
                     l_ = LIST_MARK.sub('', l_); kl_, kp_ = key(l_), key(stripnum(l_))
                     if len(kl_) < MINLEN or kl_ in Ftxt or kp_ in Ftxt: continue
                     need_k.append((kl_, kp_))
+            cut_k = [kk for kk, hits in line_pos.items() if hits and len(hits) <= 6 and kk not in Ftxt and all(lo_ <= q < hi_ for q in hits)]
             for j in range(a + 1, b):
                 if kids[j].find('.//' + W + 'sectPr') is not None or not keys[j]: continue
                 if len(pkeys[j]) > 60 and (pkeys[j] in Ftxt or keys[j] in Ftxt): continue   # такой абзац уже есть во фрагментах (спасение дало бы повтор)
-                lo_, hi_ = offs[j], offs[j] + len(keys[j])
-                rq = [retained_pg[k_] for k_, q_ in retained.items() if lo_ <= q_ < hi_]
+                loj, hij = offs[j], offs[j] + len(keys[j])
+                rq = [retained_pg[k_] for k_, q_ in retained.items() if loj <= q_ < hij]
                 if rq: (keep_b if min(rq) < i0 else keep_a).append(j); continue
-                if any(kl_ in keys[j] or kp_ in keys[j] or kp_ in pkeys[j] or kl_ in pkeys[j] for kl_, kp_ in need_k): keep_a.append(j)
+                if any(kl_ in keys[j] or kp_ in keys[j] or kp_ in pkeys[j] or kl_ in pkeys[j] for kl_, kp_ in need_k): keep_a.append(j); continue
+                if any(kk in keys[j] or kk in pkeys[j] for kk in cut_k): keep_a.append(j)
             if keep_b or keep_a:
                 reg['salvaged'] = {'before': len(keep_b), 'after': len(keep_a)}
                 reg['destroyed'] = 0
@@ -1109,7 +1167,7 @@ def plan_doc(ddir, slug, workdir):
         reg['fragments'] = fl
         marker = f"@@REG{ri}@@"
         inserts.append({'marker': marker, 'frags': [wordrun.winpath(slug + '/' + f['file']) for f in fl]})
-        edits.append(('cut', a, b, marker, reg.get('row_a'), reg.get('row_b'), set(keep_b) | set(keep_a), keep_a))
+        edits.append(('cut', a, b, marker, reg.get('row_a'), reg.get('row_b'), set(keep_b) | set(keep_a), keep_a, bool(reg.get('same_para') or reg.get('same_row'))))
         reg['ok'] = True
         ptr = min(b, len(kids) - 1)
     # правки базы
@@ -1127,8 +1185,11 @@ def plan_doc(ddir, slug, workdir):
         mp = etree.Element(W + 'p'); r = etree.SubElement(mp, W + 'r'); t = etree.SubElement(r, W + 't'); t.text = marker
         return mp
     for e in sorted([e for e in edits if e[0] == 'cut'], key=lambda e: (e[1], e[2], (e[4] or 0) if os.environ.get('A3_SORT', '1') == '1' else 0), reverse=True):   # одна таблица: сначала нижние по строкам регионы (A3)
-        _, a, b, marker, ra, rb, keepset, keep_a = e
+        _, a, b, marker, ra, rb, keepset, keep_a = e[:8]
+        same_para = e[8] if len(e) > 8 else False
         mp = mk_marker(marker)
+        if same_para and b == a and a < len(kids):
+            kids[a].addnext(mp); continue
         if b == a and kids[a].tag == W + 'tbl' and ra is not None and rb is not None:
             # регион внутри одной таблицы: таблица делится на две, между ними маркер
             t1 = kids[a]; t2 = copy.deepcopy(t1)

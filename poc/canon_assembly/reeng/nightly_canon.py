@@ -426,23 +426,50 @@ def word_opened():
     return out
 
 
+def extra_text(doc):
+    """verify_extra по канону документа в live; многочастный — по частям (part_N: свой canon_text и эталон из plan.json), сумма.
+    Ошибка проверки -> {'error': ...}: такой документ не принимается (validator 08.10)."""
+    import verify_extra
+    od = os.path.join(LIVE, 'out', doc)
+    units = [od] if os.path.exists(os.path.join(od, 'canon_text.txt')) else sorted(glob.glob(os.path.join(od, 'part_*')))
+    if not units: return {'error': 'нет canon_text.txt ни у документа, ни у частей', 'paras_extra': None}
+    tot, ex = 0, []
+    for u in units:
+        try:
+            pl = jload(os.path.join(u, 'plan.json')) or {}
+            b = pl.get('base_src', '')
+            if b.lower().endswith('.doc'): b = b + 'x' if os.path.exists(b + 'x') else ''
+            srcs = ([b] if b else []) + sorted(glob.glob(os.path.join(LIVE, 'src', doc, 'amendments', '**', '*.docx'), recursive=True))
+            r = verify_extra.check(os.path.join(LIVE, 'src', doc), os.path.join(u, 'canon_text.txt'), srcs, pl.get('canon_pdf') if u != od else None)
+        except Exception as e:
+            return {'error': f'{os.path.basename(u)}: {type(e).__name__}: {e}'[:200], 'paras_extra': None}
+        tot += r['paras_extra']; ex += r['examples'][:3]
+    return {'paras_extra': tot, 'examples': ex}
+
+
 def accept(dry):
     """Правила готовности (human 05.10.2026): «принят» = статус live ready/ready_core (status_report --run live) и, если документ собран
     py-движком, — открылся в Word. Принятый документ замораживается (adopt его не заменяет). Нужны live/status.csv и wordopen.json."""
     state = jload(os.path.join(LIVE, 'state.json'))
     stat = {r['doc']: r for r in csv.DictReader(open(os.path.join(LIVE, 'status.csv'), encoding='utf-8-sig'), delimiter=';')}
-    wo = word_opened(); new, wait = [], []
+    wo = word_opened(); new, wait, extra = [], [], []
     for doc, st in sorted(state['docs'].items()):
         if st.get('accepted'): continue
         if st.get('status') not in ('ready', 'not_ready') or st.get('failed_key'): continue   # сборка упала — status.csv может хранить старую строку (07.10)
         s_ = stat.get(doc, {}).get('status')
         if s_ not in ('ready', 'ready_core'): continue
         if is_py_run(st['run']) and not wo.get((st['run'], doc)): wait.append(doc); continue
+        ex = extra_text(doc)   # правило 1, обратная сторона (08.10): в каноне нет абзацев, которых нет в утверждённом PDF
+        if ex.get('paras_extra') is None or ex['paras_extra'] > 0:
+            why = 'проверка не выполнена: ' + ex['error'] if ex.get('paras_extra') is None else f"{ex['paras_extra']} абз."
+            extra.append(f'{doc} ({why})'); st['review'] = 'лишний текст: ' + why; continue
+        st.pop('review', None)
         new.append(doc)
         if not dry: st['accepted'] = datetime.date.today().isoformat(); st['accepted_status'] = s_
     if not dry: state['updated'] = now(); jdump(state, os.path.join(LIVE, 'state.json'))
     tot = sum(1 for s in state['docs'].values() if s.get('accepted'))
-    print(f'принято сейчас {len(new)}; всего принятых {tot if not dry else tot + len(new)} из {len(state["docs"])}; ждут проверки открытия в Word {len(wait)}: {", ".join(wait)}')
+    print(f'принято сейчас {len(new)}; всего принятых {tot if not dry else tot + len(new)} из {len(state["docs"])}; ждут проверки открытия в Word {len(wait)}: {", ".join(wait)}'
+          + (f'; не приняты из-за лишнего текста {len(extra)}: {", ".join(extra)}' if extra else ''))
     return wait
 
 

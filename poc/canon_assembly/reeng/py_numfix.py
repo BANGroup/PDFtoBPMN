@@ -162,6 +162,61 @@ def fix_once(d, RI):
                 continue
             if mode == 'chain': set_num(e['p'], numid, il); cur = pred; virgin = nv
             else: cur = {**cur, **pred}
+    # абзац без numPr, чей текст в эталоне начинается с номера («8.6.8.1 Текст»): живая нумерация.
+    # Свой десятичный список, а не клон чужого: в документе может не быть уровня нужной глубины.
+    def decimal_num(parts):
+        nonlocal maxid
+        state_ab['max'] += 1; aid = str(state_ab['max'])
+        cl = etree.Element(qn('w:abstractNum')); cl.set(qn('w:abstractNumId'), aid)
+        etree.SubElement(cl, qn('w:multiLevelType')).set(qn('w:val'), 'multilevel')
+        etree.SubElement(cl, qn('w:nsid')).set(qn('w:val'), '%08X' % random.randint(0x10000000, 0x7FFFFFFF))
+        for i, stv in enumerate(parts):
+            lvl = etree.SubElement(cl, qn('w:lvl')); lvl.set(qn('w:ilvl'), str(i))
+            etree.SubElement(lvl, qn('w:start')).set(qn('w:val'), str(stv))
+            etree.SubElement(lvl, qn('w:numFmt')).set(qn('w:val'), 'decimal')
+            etree.SubElement(lvl, qn('w:lvlText')).set(qn('w:val'), '.'.join('%%%d' % (j + 1) for j in range(i + 1)))
+            etree.SubElement(lvl, qn('w:suff')).set(qn('w:val'), 'space')
+        last = numroot.findall(qn('w:abstractNum'))
+        (last[-1].addnext(cl) if last else numroot.insert(0, cl))
+        abstracts[aid] = cl
+        maxid += 1
+        num = etree.SubElement(numroot, qn('w:num')); num.set(qn('w:numId'), str(maxid))
+        etree.SubElement(num, qn('w:abstractNumId')).set(qn('w:val'), aid)
+        stats['chains'] += 1
+        return maxid
+    bodyk = key(' '.join(plain(pp) for _, _, pp in paras[pstart:]))
+    ptr2 = 0
+    for n, (ki, pi, p) in enumerate(paras):
+        if n < pstart or numpr_of(nb, p): continue
+        T = re.sub(r'^[«»„“”"\s]+', '', plain(p)).strip()
+        if not T or re.match(r'\d+(?:\.\d+)*\.?\s', T): continue
+        kt = key(T)
+        if len(kt) < 24: continue
+        loc = RI.locate(kt, ptr2)
+        if not loc or loc[0] - ptr2 > 80000: continue
+        pos, L = loc
+        parts, L0 = None, None
+        for L0_ in (L, max(L - 1, 0)):
+            m = re.match(r'\s*(\d+(?:\.\d+)+)\.?\s+(\S.*)', RI.lines[L0_][1])
+            if not m: continue
+            rk = key(m.group(2))
+            if rk and (kt.startswith(rk[:24]) or rk.startswith(kt[:24])):
+                parts = [int(x) for x in m.group(1).split('.')]; L0 = L0_; break
+        if not parts or not 2 <= len(parts) <= 6: continue
+        if L0 and L0 > 0:   # предыдущая короткая нумерованная строка эталона (заголовок пункта) в теле канона отсутствует
+            prev = RI.lines[L0 - 1][1].strip()
+            hm = re.match(r'\s*(\d+(?:\.\d+)+)\.?\s+(\S.*)', prev)
+            if hm and len(prev) <= 60 and key(prev) not in bodyk:
+                hp = etree.Element(qn('w:p'))
+                rt = etree.SubElement(etree.SubElement(hp, qn('w:r')), qn('w:t')); rt.text = hm.group(2).strip()
+                p.addprevious(hp)
+                hparts = [int(x) for x in hm.group(1).split('.')]
+                set_num(hp, decimal_num(hparts), len(hparts) - 1)
+                bodyk += key(prev)
+                stats['plain_head'] = stats.get('plain_head', 0) + 1
+        set_num(p, decimal_num(parts), len(parts) - 1)
+        ptr2 = pos + 1
+        stats['plain_numbered'] = stats.get('plain_numbered', 0) + 1
     mac = numroot.find(qn('w:numIdMacAtCleanup'))
     if mac is not None: numroot.remove(mac); numroot.append(mac)
     return stats
