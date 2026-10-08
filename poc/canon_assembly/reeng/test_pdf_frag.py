@@ -157,3 +157,28 @@ def test_words_tail_insert_complete_paragraph():
     r = PW.plan_edits(a, a + ' багажа.')
     assert r and r[0][0][3] == 'insert'
     assert PW.plan_edits(a, a + ' багажа') is None                                      # PDF-абзац без точки — возможно обрыв
+
+
+# ---------------- py_numfix.plain_head: заголовок с автономером не дублируется ----------------
+def _numfix_case(tmp_path, with_head):
+    import py_numfix
+    pdf = str(tmp_path / 'n.pdf')
+    make_pdf(pdf, [[(50, 100, '1 ОБЩИЕ ПОЛОЖЕНИЯ'), (50, 130, '8.6.7 Порядок выдачи допусков'),
+                    (50, 160, '8.6.7.1 Текст пункта документа длиннее двадцати четырех знаков.')]])
+    d = docx.Document(); lists = F.Lists(d)
+    p = d.add_paragraph('ОБЩИЕ ПОЛОЖЕНИЯ'); F.set_numpr(p, lists.get('dec', 'ru'), 0)
+    if with_head:
+        h = d.add_paragraph('Порядок выдачи допусков'); F.set_numpr(h, lists.get('dec', 'ru'), 2)   # номер автоматический, в тексте его нет
+    d.add_paragraph('Текст пункта документа длиннее двадцати четырех знаков.')
+    log = py_numfix.run(d, pdf)
+    return [x.get('plain_head', 0) for x in log], [q.text for q in d.paragraphs]
+
+
+def test_plain_head_not_duplicated_for_autonumbered_heading(tmp_path):
+    ph, texts = _numfix_case(tmp_path, True)
+    assert sum(ph) == 0 and texts.count('Порядок выдачи допусков') == 1
+
+
+def test_plain_head_still_added_when_missing(tmp_path):
+    ph, texts = _numfix_case(tmp_path, False)
+    assert sum(ph) == 1 and texts.count('Порядок выдачи допусков') == 1

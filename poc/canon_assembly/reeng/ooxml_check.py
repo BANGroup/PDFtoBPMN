@@ -39,11 +39,17 @@ def check(path):
     for n in parts:
         root = rd(n); rels = {}
         rn = 'word/_rels/' + posixpath.basename(n) + '.rels'
-        if rn in names: rels = {r.get('Id') for r in rd(rn)}
+        rtype = {}
+        if rn in names: rtype = {r.get('Id'): r.get('Type', '').rsplit('/', 1)[-1] for r in rd(rn)}; rels = set(rtype); ext = {r.get('Id') for r in rd(rn) if r.get('TargetMode') == 'External'}
         for el in root.iter():
-            for a in ('id', 'embed', 'link', 'pict', 'dm', 'lo', 'qs', 'cs'):
+            for a in ('id', 'embed', 'link', 'pict', 'dm', 'lo', 'qs', 'cs', 'href'):
                 v = el.get(RN + a)
                 if v and v not in rels: out.append(f'{n}: r:{a}={v} нет в rels')
+            if etree.QName(el).localname == 'imagedata':   # r:id/r:href картинки VML обязаны быть связями-изображениями (docxcompose не переносил r:href: он указывал на header -> «Файл поврежден»)
+                v = el.get(RN + 'id')
+                if v in rtype and rtype[v] != 'image': out.append(f'{n}: imagedata r:id={v} ссылается на {rtype[v]}, не на image')
+                v = el.get(RN + 'href')
+                if v in rtype and not (v in ext and rtype[v] == 'image'): out.append(f'{n}: imagedata r:href={v} не внешняя связь-изображение ({rtype[v]}): Word — «Файл поврежден»')
         cnt = collections.Counter()
         for tag, order in ORDER.items():
             if not order: continue
@@ -95,6 +101,18 @@ def check(path):
     bad = {e.get(W + 'val') for e in doc.iter(W + 'numId')} - numids
     if bad: out.append(f'document: numId без w:num: {sorted(bad)[:5]}')
     return sorted(set(out))
+
+
+
+def fix_bad_href(d):
+    """Убрать r:href у VML-imagedata, если он указывает не на внешнюю связь-изображение (сборка не переносит ссылку на внешний рисунок; встроенный r:id остаётся). d — python-docx Document -> число правок."""
+    part = d.part; n = 0
+    for el in d.element.iter('{urn:schemas-microsoft-com:vml}imagedata'):
+        v = el.get(RN + 'href')
+        if v is None: continue
+        rel = part.rels.get(v)
+        if rel is None or not (rel.is_external and rel.reltype.endswith('/image')): del el.attrib[RN + 'href']; n += 1
+    return n
 
 
 if __name__ == '__main__':

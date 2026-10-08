@@ -69,7 +69,7 @@ def marker(t, prev_open):
     if m:
         comps = [int(x) for x in m.group(1).split('.')]
         rest = t[m.end():]
-        if comps[0] == 0: return None
+        if comps[0] == 0 or m.group(1)[0] == '0': return None   # «03.00 UTC» — время, не номер пункта
         if len(comps) >= 3 or not prev_open or UPPER_START.match(rest): return ('dec', comps, rest)
         return None
     m = PDEC.match(t)
@@ -127,7 +127,7 @@ def build_paras(ls):
 
 
 # ---------- нумерация ----------
-def _abstract(aid, kind):
+def _abstract(aid, kind, starts=None):
     A = OxmlElement('w:abstractNum'); A.set(qn('w:abstractNumId'), str(aid))
     e = OxmlElement('w:nsid'); e.set(qn('w:val'), '%08X' % random.randint(0x10000000, 0x7FFFFFFF)); A.append(e)
     mt = OxmlElement('w:multiLevelType'); mt.set(qn('w:val'), 'multilevel' if kind == 'dec' else 'singleLevel'); A.append(mt)
@@ -136,7 +136,7 @@ def _abstract(aid, kind):
         L = OxmlElement('w:lvl'); L.set(qn('w:ilvl'), str(il))
         def sub(tag, val):
             e = OxmlElement(tag); e.set(qn('w:val'), val); L.append(e)
-        sub('w:start', '1')
+        sub('w:start', str(starts[il]) if starts and il < len(starts) else '1')
         sub('w:numFmt', {'dec': 'decimal', 'pdec': 'decimal', 'plet': 'russianLower', 'dash': 'bullet'}[kind])
         sub('w:suff', 'space')
         sub('w:lvlText', {'dec': '.'.join('%%%d' % (k + 1) for k in range(il + 1)), 'pdec': '%1)', 'plet': '%1)', 'dash': '–'}[kind])
@@ -152,12 +152,12 @@ class Lists:
         self.root = doc.part.numbering_part.element
         ids = [int(x.get(qn('w:abstractNumId'))) for x in self.root.findall(qn('w:abstractNum'))] + [int(x.get(qn('w:numId'))) for x in self.root.findall(qn('w:num'))]
         self.next = max(ids + [0]) + 100
-        self.map = {}
-    def get(self, kind, script):
+        self.map = {}; self.prev = {}; self.d0 = {}
+    def get(self, kind, script, starts=None, force=False):
         k = (kind, script)
-        if k not in self.map:
+        if force or k not in self.map:
             self.next += 1; aid = nid = self.next
-            A = _abstract(aid, kind)
+            A = _abstract(aid, kind, starts)
             first_num = self.root.find(qn('w:num'))
             if first_num is not None: first_num.addprevious(A)
             else: self.root.append(A)
@@ -166,6 +166,21 @@ class Lists:
             self.root.append(N)
             self.map[k] = nid
         return self.map[k]
+
+    def seq(self, kind, script, comps):
+        """restart=True (pdf_canon): номер абзаца должен совпасть с номером PDF. Продолжаем список, если очередной номер — «следующий» после предыдущего
+        того же вида/языка (Word посчитает его так же), иначе новый список (abstractNum) со стартами = номер PDF (нумерация приложений, подпунктов «а)», «1)» начинается заново)."""
+        k = (kind, script); prev = self.prev.get(k)
+        if kind == 'dash': return self.get(kind, script)
+        d = len(comps)
+        if prev is None: exp = None
+        elif kind == 'dec':
+            exp = prev[:d - 1] + [prev[d - 1] + 1] if d <= len(prev) else (prev + [1] if d == len(prev) + 1 else None)
+        else: exp = [prev[0] + 1]
+        self.prev[k] = list(comps)
+        if exp == comps and k in self.map and d >= self.d0[k]: return self.map[k]   # d < d0: сброс уровня со «стартовым» значением дал бы чужой номер -> новый список
+        self.d0[k] = d
+        return self.get(kind, script, starts=comps, force=True)
 
 
 def set_numpr(p, nid, il):
@@ -187,11 +202,13 @@ def add_bookmark(p_first, p_last, bid, name):
 
 
 def _tables(pg):
-    try: return [t for t in pg.find_tables().tables if t.row_count >= 2 and t.col_count >= 2]
+    try:
+        if not pg.get_drawings(): return []   # таблицы ищутся по линиям: без векторной графики их нет (find_tables ~0.1 с на страницу)
+        return [t for t in pg.find_tables().tables if t.row_count >= 2 and t.col_count >= 2]
     except Exception: return []
 
 
-def make_fragment(pdf, page_nums, dst, head, sect=None, tables=True):
+def make_fragment(pdf, page_nums, dst, head, sect=None, tables=True, restart=False):
     """docx-фрагмент из страниц PDF (1-based номера) -> статистика {'pages','lines','missed','paras','numbered','tables','empty_pages','bookmarks'}."""
     d = fitz.open(pdf)
     doc = docx.Document()
@@ -200,8 +217,8 @@ def make_fragment(pdf, page_nums, dst, head, sect=None, tables=True):
         if ch.tag != qn('w:sectPr'): body.remove(ch)
     lists = Lists(doc)
     st = {'pages': [], 'lines': 0, 'missed': [], 'paras': 0, 'numbered': 0, 'tables': 0, 'empty_pages': [], 'bookmarks': []}
-    all_text = []
-    bid = 100
+    all_text = []; full = ''
+    bid = 100; n_done = 0
     for n in page_nums:
         pg = d[n - 1]
         ls0 = page_lines(pg)
@@ -233,7 +250,7 @@ def make_fragment(pdf, page_nums, dst, head, sect=None, tables=True):
                 par = doc.add_paragraph(obj['t'])
                 if obj['kind']:
                     il = min(len(obj['comps']) - 1, 8) if obj['kind'] == 'dec' else 0
-                    set_numpr(par, lists.get(obj['kind'], obj['script']), il); st['numbered'] += 1
+                    set_numpr(par, lists.seq(obj['kind'], obj['script'], obj['comps']) if restart else lists.get(obj['kind'], obj['script']), il); st['numbered'] += 1
                 st['paras'] += 1; all_text.append(obj['t'])
                 first_par = first_par or par; last_par = par
             else:
@@ -249,7 +266,7 @@ def make_fragment(pdf, page_nums, dst, head, sect=None, tables=True):
             bid += 1; nm = f'PDF_src_p{n}'
             add_bookmark(first_par, last_par, bid, nm); st['bookmarks'].append(nm)
         st['pages'].append(n); st['lines'] += len(keep)
-        full = key(' '.join(all_text))
+        full += key(' '.join(all_text[n_done:])); n_done = len(all_text)
         for l in keep:
             k = key(l['t']); k2 = key(re.sub(r'^\s*(\d+(\.\d+)*\.?|[а-яa-z]\)|\d+\)|[-–•·▪])\s*', '', l['t']))
             if len(k) >= 6 and k not in full and k2 not in full: st['missed'].append((n, l['t'][:60]))
@@ -260,7 +277,7 @@ def make_fragment(pdf, page_nums, dst, head, sect=None, tables=True):
         for ch in sect:
             if etree_local(ch) in ('pgSz', 'pgMar', 'cols'): sp.append(copy.deepcopy(ch))
     if st['missed'] and tables and st['tables']:   # таблица потеряла строки -> страницы без таблиц (абзацы)
-        return make_fragment(pdf, page_nums, dst, head, sect, tables=False)
+        return make_fragment(pdf, page_nums, dst, head, sect, tables=False, restart=restart)
     doc.save(dst)
     return st
 

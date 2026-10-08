@@ -23,6 +23,23 @@ def words(t):
     return [w for w in (P.key(x) for x in re.split(r'[\s\-–—/|]+', t)) if w]
 
 
+def pdf_words(t):
+    """Слова текстового слоя PDF: цепочки одиночных букв (разрядка при выключке по ширине: «т е х н и ч е с к и е») склеиваются."""
+    out, run = [], []
+    for w in words(t):
+        if len(w) == 1 and not w.isdigit(): run.append(w); continue
+        if len(run) >= 3: out.append(''.join(run))
+        else: out += run
+        run = []; out.append(w)
+    out += [''.join(run)] if len(run) >= 3 else run
+    return out
+
+
+def formula_like(ws):
+    """Формула Word (OMML): больше половины «слов» — одиночные знаки или короткие обозначения с цифрами."""
+    return sum(1 for w in ws if len(w) <= 2 or re.fullmatch(r'[a-z]\d*|\d+', w)) > 0.5 * len(ws)
+
+
 def trigrams(ws):
     return {tuple(ws[i:i + 3]) for i in range(len(ws) - 2)}
 
@@ -38,28 +55,30 @@ def check(doc_dir, canon_text, sources=(), ref_pdf=None):
     cnt = collections.Counter(k for p in pages for k in {P.key(l) for l in p['lines']})
     head = {k for k, c in cnt.items() if c > 0.3 * len(pages)}
     flow = [l for p in pages for l in p['lines'] if P.key(l) not in head and not re.search(r'Стр\.?\s*/?\s*(page)?\s*\d', l)]
-    fw = words(' '.join(flow))
+    fw = pdf_words(' '.join(flow))
+    allw = pdf_words(' '.join(l for p in pages for l in p['lines']))   # с колонтитулами: фраза, повторённая на многих листах (ДП-В4.005-07), — не колонтитул для наличия
     pdf_cnt = collections.Counter(tuple(fw[i:i + 3]) for i in range(len(fw) - 2))
-    ref = set(pdf_cnt)
+    ref = set(pdf_cnt) | {tuple(allw[i:i + 3]) for i in range(len(allw) - 2)}
     other = ' '.join(r for f in sources if str(f).endswith('.docx') for r in BT.docx_object_runs(f))
     ref |= trigrams(words(other))
     paras_b = [(n, t, words(t), intable.get(id(pp), False)) for pp in body[b0:] for n, t in [pp]]
-    fwset = set(fw) | set(words(other))
+    fwset = set(fw) | set(allw) | set(words(other)) | set(words(' '.join(flow)))
     can_cnt = collections.Counter(g for _, _, ws, tb in paras_b if not tb for g in (tuple(ws[i:i + 3]) for i in range(len(ws) - 2)))
     out, rep = [], []
     for n, t, ws, tb in paras_b:
-        if len(ws) < MIN_WORDS: continue
+        if len(ws) < MIN_WORDS or formula_like(ws): continue
         if tb:   # ячейка таблицы: порядок чтения PDF другой — только наличие слов, без повторов
             cov = sum(1 for w in ws if w in fwset) / len(ws)
             if cov < COVER: out.append((round(cov, 2), n, t))
             continue
         tg = trigrams(ws)
         cov = sum(1 for g in tg if g in ref) / len(tg)
-        if cov < COVER: out.append((round(cov, 2), n, t)); continue
+        wcov = sum(1 for w in ws if w in fwset) / len(ws)
+        if cov < COVER and wcov < 0.8: out.append((round(cov, 2), n, t)); continue   # тройки рвутся на разрядке/вёрстке — тогда нужны и чужие слова
         # повтор сверх эталона: тройки абзаца в каноне встречаются чаще, чем в PDF (старая редакция рядом с новой)
         over = sum(1 for g in tg if g in pdf_cnt and can_cnt[g] > pdf_cnt[g]) / len(tg)
         if over >= COVER: rep.append((round(over, 2), n, t))
-    return {'paras_extra': len(out), 'paras_repeat': len(rep), 'words_extra': sum(len(words(t)) for _, _, t in out + rep),
+    return {'_items': out, '_repeat': rep, 'paras_extra': len(out), 'paras_repeat': len(rep), 'words_extra': sum(len(words(t)) for _, _, t in out + rep),
             'examples': [f'[нет в PDF {1 - c:.0%}] {n} {t[:140]}'.strip() for c, n, t in out[:8]]
                         + [f'[повтор {c:.0%}] {n} {t[:140]}'.strip() for c, n, t in rep[:8]]}
 

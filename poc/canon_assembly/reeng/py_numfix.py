@@ -174,8 +174,8 @@ def fix_once(d, RI):
             lvl = etree.SubElement(cl, qn('w:lvl')); lvl.set(qn('w:ilvl'), str(i))
             etree.SubElement(lvl, qn('w:start')).set(qn('w:val'), str(stv))
             etree.SubElement(lvl, qn('w:numFmt')).set(qn('w:val'), 'decimal')
+            etree.SubElement(lvl, qn('w:suff')).set(qn('w:val'), 'space')   # схема: suff раньше lvlText
             etree.SubElement(lvl, qn('w:lvlText')).set(qn('w:val'), '.'.join('%%%d' % (j + 1) for j in range(i + 1)))
-            etree.SubElement(lvl, qn('w:suff')).set(qn('w:val'), 'space')
         last = numroot.findall(qn('w:abstractNum'))
         (last[-1].addnext(cl) if last else numroot.insert(0, cl))
         abstracts[aid] = cl
@@ -185,6 +185,7 @@ def fix_once(d, RI):
         stats['chains'] += 1
         return maxid
     bodyk = key(' '.join(plain(pp) for _, _, pp in paras[pstart:]))
+    bodyk_ls = key(' '.join((truth.get((ki_, pi_)) or '') + ' ' + plain(pp) for ki_, pi_, pp in paras[pstart:]))   # «ListString + текст»: заголовок с автономером
     ptr2 = 0
     for n, (ki, pi, p) in enumerate(paras):
         if n < pstart or numpr_of(nb, p): continue
@@ -206,13 +207,16 @@ def fix_once(d, RI):
         if L0 and L0 > 0:   # предыдущая короткая нумерованная строка эталона (заголовок пункта) в теле канона отсутствует
             prev = RI.lines[L0 - 1][1].strip()
             hm = re.match(r'\s*(\d+(?:\.\d+)+)\.?\s+(\S.*)', prev)
-            if hm and len(prev) <= 60 and key(prev) not in bodyk:
+            # заголовок уже есть: набран текстом (bodyk), с автономером (bodyk_ls) или стоит в 3 абзацах перед этим с тем же текстом (номер поправит mismatch-проход)
+            tk = key(hm.group(2)) if hm else ''
+            near = bool(tk) and any(key(plain(q)) == tk for _, _, q in paras[max(n - 3, 0):n])
+            if hm and len(prev) <= 60 and key(prev) not in bodyk and key(prev) not in bodyk_ls and not near:
                 hp = etree.Element(qn('w:p'))
                 rt = etree.SubElement(etree.SubElement(hp, qn('w:r')), qn('w:t')); rt.text = hm.group(2).strip()
                 p.addprevious(hp)
                 hparts = [int(x) for x in hm.group(1).split('.')]
                 set_num(hp, decimal_num(hparts), len(hparts) - 1)
-                bodyk += key(prev)
+                bodyk += key(prev); bodyk_ls += key(prev)
                 stats['plain_head'] = stats.get('plain_head', 0) + 1
         set_num(p, decimal_num(parts), len(parts) - 1)
         ptr2 = pos + 1

@@ -256,7 +256,7 @@ def _decimal_num(d, parts):
     mt = OxmlElement('w:multiLevelType'); mt.set(qn('w:val'), 'multilevel'); cl.append(mt)
     for i, stv in enumerate(parts):
         lvl = OxmlElement('w:lvl'); lvl.set(qn('w:ilvl'), str(i))
-        for tag, val in (('w:start', str(stv)), ('w:numFmt', 'decimal'), ('w:lvlText', '.'.join('%%%d' % (j + 1) for j in range(i + 1))), ('w:suff', 'space')):
+        for tag, val in (('w:start', str(stv)), ('w:numFmt', 'decimal'), ('w:suff', 'space'), ('w:lvlText', '.'.join('%%%d' % (j + 1) for j in range(i + 1)))):   # порядок по схеме
             e = OxmlElement(tag); e.set(qn('w:val'), val); lvl.append(e)
         cl.append(lvl)
     last = numroot.findall(W + 'abstractNum')

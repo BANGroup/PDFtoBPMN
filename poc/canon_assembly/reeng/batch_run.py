@@ -273,7 +273,7 @@ def run_part_py(run_id, doc, pid, od, sd):
         except subprocess.TimeoutExpired: pass
     sp = os.path.join(pod, 'status.json')
     ws = json.load(open(sp, encoding='utf-8')) if os.path.exists(sp) else {'error': 'нет status.json, см. log', 'ready': False}
-    r = {k: ws[k] for k in ('verify', 'error') if k in ws}
+    r = {k: ws[k] for k in ('verify', 'error', 'patches') if k in ws}
     r['seconds'] = round(time.time() - t0); r['ru_maxrss_mb'] = ws.get('ru_maxrss_mb')
     r['status'] = 'failed' if ws.get('error') else ('ready' if ws.get('ready') else 'not_ready')
     r['reason'] = ''
@@ -303,6 +303,8 @@ def worker_py(run_id, doc):
             v = {k: sum((i.get('verify') or {}).get(k, 0) for i in st['parts_info']) for k in ('lines', 'missing', 'numbered', 'numbered_bad', 'duplicates', 'live_numbering', 'frozen_numbers')}
             v['coverage'] = 1 - v['missing'] / max(v['lines'], 1)
             st['verify'] = v; st['parts'] = [f"{i['id']}:{i['status']}" for i in st['parts_info']]
+            pp = [i.get('patches') or {} for i in st['parts_info']]
+            st['patches'] = {'applied': sum(x.get('applied', 0) for x in pp), 'skipped': sum(x.get('skipped', 0) for x in pp), 'stale': any(x.get('stale') for x in pp)}
             sts = [i['status'] for i in st['parts_info']]
             st['ready'] = all(x == 'ready' for x in sts)
             if not st['ready']:
@@ -313,7 +315,61 @@ def worker_py(run_id, doc):
             st['ru_maxrss_mb'] = max([i.get('ru_maxrss_mb') or 0 for i in st['parts_info']] or [0])
         else:
             s = pyengine.run_doc(sd, od, os.path.join(rd, 'work_py', doc), doc)
-            st.update(warnings=s.get('warnings', []), ready=s.get('ready'), verify=s.get('verify'), error=s.get('error', ''), failed=bool(s.get('error')), pyengine_seconds=s.get('seconds'), ru_maxrss_mb=s.get('ru_maxrss_mb'), chapters=s.get('chapters'))
+            st.update(warnings=s.get('warnings', []), ready=s.get('ready'), verify=s.get('verify'), error=s.get('error', ''), failed=bool(s.get('error')), pyengine_seconds=s.get('seconds'), ru_maxrss_mb=s.get('ru_maxrss_mb'), patches=s.get('patches'), chapters=s.get('chapters'))
+        st['stage'] = 'done'
+    except Exception:
+        st['error'] = traceback.format_exc()[-600:]; st['failed'] = True
+    jdump(st, os.path.join(od, 'worker_result.json'))
+    return 0
+
+
+def run_part_pdf(run_id, doc, pid, od, sd):
+    """Часть многочастного документа PDF-движком (pdf_canon.py) в отдельном процессе. -> как run_part_py."""
+    pod = os.path.join(od, f'part_{pid}'); os.makedirs(pod, exist_ok=True); t0 = time.time()
+    cmd = [sys.executable, os.path.join(HERE, 'pdf_canon.py'), '--src', os.path.join(sd, '__parts', f'p{pid}'), '--out', pod, '--doc', doc]
+    with open(os.path.join(pod, 'log'), 'w', encoding='utf-8') as lf:
+        try: subprocess.run(cmd, stdout=lf, stderr=subprocess.STDOUT, timeout=DOC_TIMEOUT)
+        except subprocess.TimeoutExpired: pass
+    sp = os.path.join(pod, 'status.json')
+    ws = json.load(open(sp, encoding='utf-8')) if os.path.exists(sp) else {'error': 'нет status.json, см. log', 'ready': False}
+    r = {k: ws[k] for k in ('verify', 'error', 'paras_extra', 'garbage_share', 'pdf_pages', 'canon_docx_mb') if k in ws}
+    r['seconds'] = round(time.time() - t0); r['ru_maxrss_mb'] = ws.get('ru_maxrss_mb')
+    r['status'] = 'skipped_garbage' if ws.get('skipped') else 'failed' if ws.get('error') else ('ready' if ws.get('ready') else 'not_ready')
+    r['reason'] = ''
+    return r
+
+
+def worker_pdf(run_id, doc):
+    """--engine pdf: канон целиком из текстового слоя PDF-эталона (pdf_canon, шаг 11.2). Части — split_parts, каждая отдельным процессом; Word не нужен."""
+    import pdf_canon, resource
+    g = min(int(os.environ.get('PY_RLIMIT_GB', '5')), 8); resource.setrlimit(resource.RLIMIT_AS, (g << 30, g << 30))
+    rd = os.path.join(RUNS, run_id); od = doc_out(rd, doc); sd = os.path.join(rd, 'src', doc); os.makedirs(od, exist_ok=True)
+    st = {'doc_num': doc, 'stage': 'start', 'warnings': [], 'source': 'pdf'}
+    try:
+        refs = PD.ref_pdfs(sd)
+        if not refs: raise RuntimeError('в files/ нет действующего PDF-эталона')
+        if len(refs) > 1:
+            import pyengine
+            pyengine.ensure_docx_siblings(sd)   # split_parts читает базы Word; нет конвертации — часть без базы, для PDF-движка не важно
+            ps = split_parts(sd, refs); st['parts_info'] = []
+            for pt in ps:
+                info = {'id': pt['id'], 'pdf': os.path.basename(pt['pdf']), 'status': None}
+                info.update(run_part_pdf(run_id, doc, pt['id'], od, sd)); st['parts_info'].append(info)
+            v = {k: sum((i.get('verify') or {}).get(k, 0) for i in st['parts_info']) for k in ('lines', 'missing', 'numbered', 'numbered_bad', 'duplicates', 'live_numbering', 'frozen_numbers')}
+            v['coverage'] = 1 - v['missing'] / max(v['lines'], 1)
+            st['verify'] = v; st['parts'] = [f"{i['id']}:{i['status']}" for i in st['parts_info']]
+            st['paras_extra'] = sum(i.get('paras_extra') or 0 for i in st['parts_info'])
+            sts = [i['status'] for i in st['parts_info']]
+            st['ready'] = all(x == 'ready' for x in sts)
+            if not st['ready'] and 'failed' in sts: st['status_override'] = 'part_failed'
+            st['error'] = '; '.join(f"ч{i['id']}: {i.get('error') or i['status']}" for i in st['parts_info'] if i['status'] not in ('ready', 'not_ready'))[:400]
+            st['pyengine_seconds'] = sum(i.get('seconds') or 0 for i in st['parts_info'])
+            st['ru_maxrss_mb'] = max([i.get('ru_maxrss_mb') or 0 for i in st['parts_info']] or [0])
+        else:
+            s = pdf_canon.run_doc(sd, od, doc)
+            st.update(warnings=s.get('warnings', []), ready=s.get('ready'), verify=s.get('verify'), paras_extra=s.get('paras_extra'), error=s.get('error', ''), failed=bool(s.get('error')),
+                      pyengine_seconds=s.get('seconds'), ru_maxrss_mb=s.get('ru_maxrss_mb'), pdf_pages=s.get('pdf_pages'))
+            if s.get('skipped'): st['status_override'] = 'skipped_' + s['skipped']
         st['stage'] = 'done'
     except Exception:
         st['error'] = traceback.format_exc()[-600:]; st['failed'] = True
@@ -542,9 +598,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--run-id', required=True); ap.add_argument('--limit', type=int); ap.add_argument('--docs')
     ap.add_argument('--retry-failed', action='store_true'); ap.add_argument('--redo', help='DOC1,DOC2: переобработать независимо от статуса'); ap.add_argument('--worker', action='store_true'); ap.add_argument('--part', type=int)
-    ap.add_argument('--engine', choices=('word', 'py'), default='word', help='py: сборка без Word (pyengine.py, пилот шага 9)')
+    ap.add_argument('--engine', choices=('word', 'py', 'pdf'), default='word', help='py: сборка без Word (pyengine.py, пилот шага 9); pdf: канон из текстового слоя PDF (pdf_canon.py, шаг 11.2)')
     a = ap.parse_args()
     if a.worker and a.engine == 'py' and a.part is None: sys.exit(worker_py(a.run_id, a.docs))
+    if a.worker and a.engine == 'pdf' and a.part is None: sys.exit(worker_pdf(a.run_id, a.docs))
     if a.worker: sys.exit(worker(a.run_id, a.docs, a.part))
     rd = os.path.join(RUNS, a.run_id); os.makedirs(os.path.join(rd, 'out'), exist_ok=True)
     snap = build_snapshot(rd)
@@ -578,7 +635,7 @@ def main():
         if err:
             st.update(status='changed_during_run', error=err)
         else:
-            cmd = [sys.executable, os.path.abspath(__file__), '--worker', '--run-id', a.run_id, '--docs', doc] + (['--engine', 'py'] if a.engine == 'py' else [])
+            cmd = [sys.executable, os.path.abspath(__file__), '--worker', '--run-id', a.run_id, '--docs', doc] + (['--engine', a.engine] if a.engine != 'word' else [])
             with open(os.path.join(od, 'log'), 'w', encoding='utf-8') as lf:
                 try: subprocess.run(cmd, stdout=lf, stderr=subprocess.STDOUT, timeout=doc_timeout(os.path.join(rd, 'src', doc))); to = False
                 except subprocess.TimeoutExpired: to = True
@@ -591,7 +648,7 @@ def main():
                 ws = rj('worker_state.json') or {'stage': 'start'}
                 ws['failed'] = True; ws['error'] = 'воркер завершился без результата, см. log'
             if to: ws['failed'] = True; ws['error'] = f'таймаут {DOC_TIMEOUT // 60} мин на этапе {ws.get("stage")}'
-            st.update({k: ws[k] for k in ('ref_pages', 'changes', 'verify', 'chain_flags', 'warnings', 'error', 'parts', 'parts_info', 'pdf_pages') if k in ws})
+            st.update({k: ws[k] for k in ('ref_pages', 'changes', 'verify', 'chain_flags', 'warnings', 'error', 'parts', 'parts_info', 'pdf_pages', 'source', 'paras_extra') if k in ws})
             if ws.get('skip'): st.update(status='skipped_no_pdf', fail_stage='plan')
             elif ws.get('status_override'): st.update(status=ws['status_override'], fail_stage='plan')
             elif ws.get('failed'): st.update(status='failed', fail_stage=ws.get('stage', ''))

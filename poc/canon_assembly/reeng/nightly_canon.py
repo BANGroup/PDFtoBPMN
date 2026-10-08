@@ -426,11 +426,11 @@ def word_opened():
     return out
 
 
-def extra_text(doc):
+def extra_text(doc, od=None):
     """verify_extra по канону документа в live; многочастный — по частям (part_N: свой canon_text и эталон из plan.json), сумма.
     Ошибка проверки -> {'error': ...}: такой документ не принимается (validator 08.10)."""
     import verify_extra
-    od = os.path.join(LIVE, 'out', doc)
+    od = od or os.path.join(LIVE, 'out', doc)
     units = [od] if os.path.exists(os.path.join(od, 'canon_text.txt')) else sorted(glob.glob(os.path.join(od, 'part_*')))
     if not units: return {'error': 'нет canon_text.txt ни у документа, ни у частей', 'paras_extra': None}
     tot, ex = 0, []
@@ -493,7 +493,12 @@ def adopt(run, docs, dry):
         new_s, old_s = score(r), score(old)
         line = f"{doc}: {old.get('status') if old else '—'} {old_s[1] if old else ''} ({st['run'] if st else '—'}) -> {r['status']} {new_s[1]} ({run})"
         wo = word_opened() if new_s == old_s else {}
-        if new_s > old_s or (new_s == old_s and not (st and not wo.get((st['run'], doc), True) and wo.get((run, doc)))):
+        less_extra = False
+        if new_s == old_s and st:   # ничья: берётся сборка с меньшим лишним текстом (правки удалили старую редакцию — 08.10)
+            e_old = (extra_text(doc) or {}).get('paras_extra')
+            e_new = (extra_text(doc, os.path.join(RUNS, run, 'out', doc)) or {}).get('paras_extra')
+            less_extra = e_old is not None and e_new is not None and e_new < e_old
+        if new_s > old_s or (new_s == old_s and not less_extra and not (st and not wo.get((st['run'], doc), True) and wo.get((run, doc)))):
             kept.append(line); continue   # при равенстве берётся новая версия, только если старая не прошла проверку в Word, а новая прошла
         pf_new = os.path.join(RUNS, run, 'points', doc + '.json')
         ok_new = pct_of(pts_of(jload(pf_new)))[1] if os.path.exists(pf_new) else 0

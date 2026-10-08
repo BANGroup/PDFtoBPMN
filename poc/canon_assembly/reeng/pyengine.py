@@ -53,7 +53,7 @@ def rss_mb(): return round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 
 def run_doc(sd, od, wd, doc=None):
     doc = doc or os.path.basename(os.path.normpath(sd))
     os.makedirs(od, exist_ok=True); shutil.rmtree(wd, ignore_errors=True); os.makedirs(wd)
-    st = {'doc': doc, 'engine': 'py', 'stage_seconds': {}, 'warnings': []}
+    st = {'doc': doc, 'engine': 'py', 'stage_seconds': {}, 'warnings': [], 'patches': {'applied': 0, 'skipped': 0, 'stale': False}}
     T = [time.time()]
     def lap(name):
         now = time.time(); st['stage_seconds'][name] = round(now - T[0], 2); T[0] = now
@@ -78,6 +78,8 @@ def run_doc(sd, od, wd, doc=None):
         if lg['marker_not_found']: st['warnings'].append('marker not found: ' + ','.join(lg['marker_not_found']))
         if lg['frag_errors']: st['warnings'].append('frag errors: %d' % len(lg['frag_errors']))
         nlog = py_numfix.run(d, ref_pdf)
+        import ooxml_check as _oc
+        st['bad_href_removed'] = _oc.fix_bad_href(d)   # r:href VML-картинки после слияния указывал на header -> Word: «Файл поврежден»
         d.save(os.path.join(od, 'canon.docx')); lap('numfix')
         import ooxml_check
         st['ooxml_problems'] = ooxml_check.check(os.path.join(od, 'canon.docx'))
@@ -137,6 +139,10 @@ def run_doc(sd, od, wd, doc=None):
             except Exception as e:
                 v = restore_num(f'pdf_num пропущен: {type(e).__name__}: {e}')
             lap('pdf_num')
+        if os.environ.get('CANON_PATCHES', '1') != '0':   # шаг 11.1: поштучные правки разборщиков (patches/<doc>.json), sha файлов должен совпасть
+            import patch_ops
+            v = patch_ops.run_hook(sd, od, doc, srcs, ref_pdf, v, st)
+            lap('patches')
         st['verify'] = {k: v[k] for k in ('lines', 'missing', 'numbered', 'numbered_bad', 'duplicates', 'frozen_numbers', 'live_numbering', 'coverage')}
         st['ready'] = v['lines'] > 0 and v['missing'] == 0 and v['numbered_bad'] == 0 and v['duplicates'] == 0 and v['frozen_numbers'] == 0
         st['error'] = ''
@@ -152,4 +158,4 @@ if __name__ == '__main__':
     ap.add_argument('--src', required=True); ap.add_argument('--out', required=True); ap.add_argument('--work', required=True); ap.add_argument('--doc')
     a = ap.parse_args()
     s = run_doc(a.src, a.out, a.work, a.doc)
-    print(json.dumps({k: s.get(k) for k in ('doc', 'ready', 'seconds', 'ru_maxrss_mb', 'stage_seconds', 'verify', 'error', 'warnings')}, ensure_ascii=False))
+    print(json.dumps({k: s.get(k) for k in ('doc', 'ready', 'seconds', 'ru_maxrss_mb', 'stage_seconds', 'verify', 'error', 'warnings', 'patches')}, ensure_ascii=False))

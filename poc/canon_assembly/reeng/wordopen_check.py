@@ -35,7 +35,7 @@ def main():
         import difflib
         sm = difflib.SequenceMatcher(None, [k for _, k in a], [k for _, k in b], autojunk=False)
         pairs = [(a[i + t], b[j + t]) for i, j, n in sm.get_matching_blocks() for t in range(n)]
-        pn = [(x, y) for x, y in pairs if x[0] or y[0]]
+        pn = [(x, y) for x, y in pairs if (x[0] or y[0]) and x[1]]   # номер пустого абзаца (разрыв раздела) — не содержимое (08.10)
         num_ok = sum(1 for x, y in pn if x[0] == y[0]); diff_ex = [(x[0], y[0], x[1][:40]) for x, y in pn if x[0] != y[0]][:5]
         res[d] = {'opened': True, 'sec': r['sec'], 'paras_word': len(a), 'paras_py': len(b), 'text_only_word': sum((ta - tb).values()),
                   'text_only_py': sum((tb - ta).values()), 'numbered_word': len(la), 'numbered_py': len(lb), 'num_same': num_ok, 'num_pairs': len(pn),
