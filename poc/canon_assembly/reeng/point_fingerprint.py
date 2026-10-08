@@ -512,9 +512,54 @@ def cut_tail(p):
 
 
 # ---------------------------------------------------------------- отпечатки
-def fingerprint(p):
+INVIS = re.compile('[\u00ad\u200b-\u200f\u2060-\u2064\ufeff]')   # мягкий перенос, нулевая ширина, невидимые операторы
+YESNO = {'да', 'нет'}
+
+
+def vocab_of(lines):
+    """Словарь слов документа (Word): нормализованные слова и их части по знакам."""
+    v = set()
+    for l in lines:
+        for w in INVIS.sub('', l.lstrip(TCELL + SHP)).split():
+            v.add(norm(w))
+            v.update(norm(x) for x in re.split(r'[^\w]+', w) if x)
+    v.discard('')
+    return v
+
+
+def heal(text, vocab):
+    """Нормализованные слова текста, где разорванные слова склеены: на стыке соседних слов повтор 1–2 букв («перев возки», «изъ ъятие»,
+    «кд-д дп-б1.002»), если склейка без повтора есть в словаре документа, а склейка с повтором и оба слова по отдельности — нет."""
+    t = [x for x in (norm(w) for w in INVIS.sub('', text).split()) if x]
+    if not vocab: return t
+    out = []
+    for w in t:
+        while out:
+            a = out[-1]; hit = None
+            if a not in vocab and w not in vocab:
+                for k in (2, 1):
+                    if len(a) > k and len(w) > k and a[-k:] == w[:k] and (a + w[k:]) in vocab and (a + w) not in vocab: hit = a + w[k:]; break
+            if not hit: break
+            out.pop(); w = hit
+        out.append(w)
+    return out
+
+
+def scheme_junk(ls):
+    """Строки-остатки схем в конце/перед схемой, не помеченные SHP: латинская легенда («Data-in Process step»), «Да/Нет» развилок,
+    одиночное слово перед блоком схемы."""
+    ls = list(ls)
+    k = len(ls)
+    while k > 1 and lang(ls[k - 1]) == 'en' and '@' not in ls[k - 1]: k -= 1
+    if 1 <= k < len(ls) and sum(len(x.split()) for x in ls[k:]) >= 3 and any(lang(x) == 'ru' for x in ls[:k]): ls = ls[:k]
+    while len(ls) > 1 and ls[-1].split() and all(norm(w) in YESNO or not norm(w) for w in ls[-1].split()): ls.pop()
+    return ls
+
+
+def fingerprint(p, vocab=None):
     """fp — по всему тексту пункта; fp_core — «ядро»: без строк схем/рисунков (метка SHP: надписи Word, текст векторных схем PDF), без хвостовых
-    номеров без текста и без прилипшего в конец заголовка следующего раздела. Совпадение по ядру только добавляет совпадения (fp не меняется)."""
+    номеров без текста, без прилипшего в конец заголовка следующего раздела, без латинской легенды и «Да/Нет» схем; невидимые символы удалены,
+    разорванные слова склеены по словарю документа (heal). Совпадение по ядру только добавляет совпадения (fp не меняется)."""
     def one(lines):
         first = lines[0] if lines else ''
         # без номера в начале: у пункта номер — первая «лексема» первой строки
@@ -522,13 +567,25 @@ def fingerprint(p):
         return ' '.join([first] + lines[1:])
     body = one([x.lstrip(SHP) for x in p['lines']])
     flat = norm(body)
-    cl = {'lines': [x for x in p['lines'] if not x.startswith(SHP)]}
-    while len(cl['lines']) > 1 and re.match(r'^\d{1,3}(?:\.\d{1,3})*\.?$', cl['lines'][-1].strip()) and re.search(r'[.;:!?)»"]\s*$', cl['lines'][-2]): cl['lines'].pop()   # не продолжение фразы («… на рисунке» / «1.»)   # хвостовой номер без текста (пустой пронумерованный абзац Word)
-    cut_tail(cl)
-    core = norm(one(cl['lines']))
+    ls = p['lines']
+    def tidy(lines):
+        c = {'lines': [x for x in lines if not x.startswith(SHP)]}
+        while len(c['lines']) > 1 and re.match(r'^\d{1,3}(?:\.\d{1,3})*\.?$', c['lines'][-1].strip()) and re.search(r'[.;:!?)»"]\s*$', c['lines'][-2]): c['lines'].pop()   # хвостовой номер без текста (пустой пронумерованный абзац Word)
+        cut_tail(c)
+        return c['lines']
+    core0 = norm(one(tidy(ls)))   # прежнее ядро (без чистки схем и склейки слов): совпадение по нему сохраняется
+    keep = []   # слово-остаток прямо перед блоком схемы («… регистрации.» / «рубежом» / схема)
+    for i, x in enumerate(ls):
+        if (not x.startswith(SHP) and i > 0 and i + 1 < len(ls) and ls[i + 1].startswith(SHP) and len(x.split()) <= 2 and x[:1].islower()
+                and re.search(r'[.;:!?)»"]\s*$', ls[i - 1])): continue
+        keep.append(x)
+    cl = {'lines': tidy(keep)}
+    cl['lines'] = scheme_junk(cl['lines'])
+    ctext = one(cl['lines'])
+    core = ''.join(heal(ctext, vocab))
     # fp_set: отсортированный набор знаков — не зависит ни от порядка строк/ячеек таблицы, ни от переносов внутри слов
-    return {'fp': sha(flat), 'fp_set': sha(''.join(sorted(flat))), 'fp_core': sha(core), 'chars': len(flat), 'text': re.sub(r'\s+', ' ', body).strip(),
-            'core_text': re.sub(r'\s+', ' ', one(cl['lines'])).strip()}
+    return {'fp': sha(flat), 'fp_set': sha(''.join(sorted(flat))), 'fp_core': sha(core), 'fp_core0': sha(core0), 'core_len': len(core), 'core0_len': len(core0), 'chars': len(flat), 'text': re.sub(r'\s+', ' ', body).strip(),
+            'core_text': re.sub(r'\s+', ' ', ctext).strip()}
 
 
 def wdiff(a, b, lim=300):
@@ -565,8 +622,10 @@ def compare(pp, wp):
         a, b = P[n]['fp'], W[n]['fp']
         r = {'num': n, 'pdf': a['fp'], 'word': b['fp'], 'pdf_chars': a['chars'], 'word_chars': b['chars'], 'head': a['text'][:100]}
         if a['fp'] == b['fp']: r['status'] = 'совпадает'
-        elif a['fp_core'] == b['fp_core']:
-            r['status'] = 'совпадает'; r['note'] = 'по ядру: без текста схем/рисунков, хвостовых номеров и прилипшего заголовка следующего раздела'
+        # ядро засчитывается только непустое (≥ 20 знаков): пункт-схема после очистки пуст, два пустых ядра — ложное совпадение (08.10)
+        elif (a['fp_core'] == b['fp_core'] and min(a.get('core_len', 99), b.get('core_len', 99)) >= 20) or \
+             (a['fp_core0'] == b['fp_core0'] and min(a.get('core0_len', 99), b.get('core0_len', 99)) >= 20):
+            r['status'] = 'совпадает'; r['note'] = 'по ядру: без текста схем/рисунков, хвостовых номеров, прилипшего заголовка следующего раздела, невидимых символов; разорванные слова склеены'
         elif a['fp_set'] == b['fp_set']:
             r['status'] = 'совпадает (порядок иной)'
             if n.startswith('прил.'): r['note'] = 'схема/таблица — сверка по набору знаков (fp_set)'
@@ -638,7 +697,8 @@ def run_doc(doc, row):
     late = [b for b in bad if b >= pgs[st]]
     if late: out['flags'].append('битый текстовый слой в содержательной части: стр. ' + ', '.join(map(str, late[:6])))
     if bad and not late: out['notes'] = f'битый текстовый слой до раздела 6 (титул/лист регистрации): стр. {bad[:6]} — не влияет'
-    for q in pp + wp: q['fp'] = fingerprint(q)
+    vocab = vocab_of(wl)
+    for q in pp + wp: q['fp'] = fingerprint(q, vocab)
     res = compare(pp, wp)
     order = {q['num']: i for i, q in enumerate(pp)}
     res.sort(key=lambda r: order.get(r['num'], 10 ** 6 + len(r['num'])))
