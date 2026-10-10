@@ -7,7 +7,11 @@
             "part": "part_1"}]}
 Якорь ищется по pagediff.key текста абзаца (или «ListString + текст»); несколько совпадений без anchor_occurrence — операция не выполняется.
 Вставленный/заменённый абзац помечается закладкой PATCH_<n> (n — номер операции в файле), формат берётся у соседнего абзаца (style_like),
-номер: у соседних пунктов живая нумерация — продолжается их numId (ListString обязан совпасть с number, иначе номер набирается текстом); у набранных — набирается текстом.
+номер: у соседних пунктов живая нумерация — продолжается их numId (ListString обязан совпасть с number); не совпал — своя цепочка списка (клон abstractNum со start по уровням
+number, проверено в Word: 8.1.3.8); у набранных соседей или при PATCH_LIST_START=0 — номер набирается текстом.
+Операции: insert_after|insert_before|delete|replace|set_number|delete_hidden_before (проходит через закладки между абзацами)|unnumber (numId=0 у абзаца со стилем-нумерацией)|
+delete_table (anchor — текст первой ячейки таблицы; таблица удаляется целиком). _Toc-закладки удалённого абзаца (delete) переходят на следующий вставленный/заменённый абзац
+той же apply (заголовок удалён и вставлен заново).
 py_numfix НЕ запускается; после операций сравнивается выгрузка до/после: изменение вне затронутых абзацев (текст; ListString — вне списков затронутых) = откат всего патча.
 
   python3 patch_ops.py --sha <doc>   # files_sha для патча
@@ -28,7 +32,8 @@ W = P.W
 REPO = os.path.abspath(os.path.join(HERE, '..', '..', '..'))
 PATCH_DIR = os.environ.get('CANON_PATCHES_DIR') or os.path.join(REPO, 'data/canon_reeng/patches')
 LIVE = os.path.join(REPO, 'data/canon_reeng/live')
-OPS = ('insert_after', 'insert_before', 'delete', 'replace', 'set_number', 'delete_hidden_before')
+OPS = ('insert_after', 'insert_before', 'delete', 'replace', 'set_number', 'delete_hidden_before', 'unnumber', 'delete_table')
+PENDING_TOC = []   # _Toc-закладки удалённых заголовков: переносятся на следующий вставленный/заменённый абзац той же apply (сбрасывается в apply)
 NUMBER = re.compile(r'^\d{1,3}(\.\d{1,3}){0,7}$')
 VKEYS = ('lines', 'missing', 'numbered', 'numbered_bad', 'duplicates', 'frozen_numbers', 'live_numbering', 'coverage')
 
@@ -173,6 +178,49 @@ def _ref_numbering(d, p):
     return None, None
 
 
+def _start_num(d, nid, number):
+    """Новая цепочка списка nid: клон abstractNum со start по уровням 0..N (N — глубина number; родители показываются значением start) + w:num -> numId | None.
+    startOverride здесь не годится: Word не берёт его для родительских уровней, уже начатых в общем abstractNum (проверено в Word: 8.1.2.8 вместо 8.1.3.8)."""
+    import random
+    try: root = d.part.numbering_part.element
+    except Exception: return None
+    num = next((n for n in root.findall(W + 'num') if n.get(qn('w:numId')) == str(nid)), None)
+    if num is None: return None
+    aid = num.find(W + 'abstractNumId').get(qn('w:val'))
+    src = next((a for a in root.findall(W + 'abstractNum') if a.get(qn('w:abstractNumId')) == aid), None)
+    if src is None: return None
+    parts = [int(x) for x in number.split('.')]
+    cl = copy.deepcopy(src)
+    new_aid = str(max([int(a.get(qn('w:abstractNumId'))) for a in root.findall(W + 'abstractNum')] + [0]) + 1)
+    cl.set(qn('w:abstractNumId'), new_aid)
+    for tag in ('w:nsid', 'w:tmpl'):
+        e = cl.find(qn(tag))
+        if e is not None: e.set(qn('w:val'), '%08X' % random.randint(0x10000000, 0x7FFFFFFF))
+    for lvl in cl.findall(qn('w:lvl')):
+        ps = lvl.find(qn('w:pStyle'))
+        if ps is not None: lvl.remove(ps)
+        k = int(lvl.get(qn('w:ilvl')))
+        if k < len(parts):
+            st = lvl.find(qn('w:start'))
+            if st is None: st = OxmlElement('w:start'); lvl.insert(0, st)
+            st.set(qn('w:val'), str(parts[k]))
+    root.findall(W + 'abstractNum')[-1].addnext(cl)
+    new = OxmlElement('w:num'); new.set(qn('w:numId'), str(max([int(n.get(qn('w:numId'))) for n in root.findall(W + 'num')] + [0]) + 1))
+    a2 = OxmlElement('w:abstractNumId'); a2.set(qn('w:val'), new_aid); new.append(a2)
+    mac = root.find(W + 'numIdMacAtCleanup')
+    (mac.addprevious(new) if mac is not None else root.append(new))
+    return new.get(qn('w:numId'))
+
+
+def _drop_num(d, nid):
+    root = d.part.numbering_part.element
+    for n in root.findall(W + 'num'):
+        if n.get(qn('w:numId')) == str(nid):
+            aid = n.find(W + 'abstractNumId').get(qn('w:val')); root.remove(n)
+            for a in root.findall(W + 'abstractNum'):
+                if a.get(qn('w:abstractNumId')) == aid and not any(x.find(W + 'abstractNumId').get(qn('w:val')) == aid for x in root.findall(W + 'num')): root.remove(a)
+
+
 def _place_number(d, p, number):
     """Номер пункта в абзац p (текст без номера): у соседних пунктов живая нумерация — продолжить их numId (ListString обязан стать равным
     number, иначе номер набирается текстом); соседи с набранными номерами или их нет — номер набирается текстом (допустимо по правилам качества)."""
@@ -184,6 +232,17 @@ def _place_number(d, p, number):
         _put_numpr(p, np_)
         v = View(d)
         if P.key(v.labels[v.paras.index(p)]) == P.key(number): return 'живой номер, numId=' + str(nid)
+        # счётчик списка не даёт нужный номер: свой w:num того же abstractNum с startOverride по уровням (КД-ДП-Б1.002-04: 8.1.3.8)
+        if os.environ.get('PATCH_LIST_START', '1') != '0':
+            nid2 = _start_num(d, nid, number)
+            if nid2:
+                np_ = OxmlElement('w:numPr')
+                e = OxmlElement('w:ilvl'); e.set(qn('w:val'), str(number.count('.'))); np_.append(e)
+                e = OxmlElement('w:numId'); e.set(qn('w:val'), str(nid2)); np_.append(e)
+                _put_numpr(p, np_)
+                v = View(d)
+                if P.key(v.labels[v.paras.index(p)]) == P.key(number): return 'живой номер, numId=%s (цепочка со стартом от списка %s)' % (nid2, nid)
+                _strip_numpr(p); _drop_num(d, nid2)
         _strip_numpr(p)
     nb = _nbr(d)
     if nb is not None and nb.numpr(p): raise ValueError(f'номер {number}: стиль абзаца несёт нумерацию, набрать текстом нельзя')
@@ -211,6 +270,31 @@ def _unhide(p):
     """webHidden в прогонах нового текста: Word-выгрузка (Range.Text) такой текст не отдаёт (проверено по Word-выгрузкам full2/full4), verify считает строку ненайденной."""
     for r in p.iter(W + 'r'):
         for e in r.findall(W + 'rPr/' + W + 'webHidden'): e.getparent().remove(e)
+
+
+def _take_toc(p):
+    """_Toc-закладки (начало + парный конец) удаляемого абзаца -> PENDING_TOC (оглавление ссылается на них; новый заголовок получит их)."""
+    root = p.getroottree().getroot()
+    for b in list(p.iter(W + 'bookmarkStart')):
+        if not (b.get(qn('w:name')) or '').startswith('_Toc'): continue
+        i = b.get(qn('w:id'))
+        ends = [o for o in root.iter(W + 'bookmarkEnd') if o.get(qn('w:id')) == i]
+        b.getparent().remove(b)
+        for o in ends: o.getparent().remove(o)
+        PENDING_TOC.append((b, ends[0] if ends else None))
+
+
+def _give_toc(p):
+    """Накопленные _Toc-закладки -> абзац p (обернуть содержимое: начало в pPr-конец, конец в конце абзаца). -> число."""
+    n = len(PENDING_TOC)
+    ppr = p.find(W + 'pPr'); pos = 0 if ppr is None else list(p).index(ppr) + 1
+    for b, e in PENDING_TOC:
+        p.insert(pos, b); pos += 1
+        e = e if e is not None else OxmlElement('w:bookmarkEnd')
+        if e.get(qn('w:id')) != b.get(qn('w:id')): e.set(qn('w:id'), b.get(qn('w:id')))
+        p.append(e)
+    del PENDING_TOC[:]
+    return n
 
 
 def _drop_bookmarks(p):
@@ -245,12 +329,13 @@ def _do(d, n, op):
         if a.find(W + 'pPr/' + W + 'sectPr') is not None: raise ValueError('абзац несёт разрыв раздела')
         par = a.getparent()
         if par is not None and par.tag == W + 'tc' and len(par.findall(W + 'p')) == 1: raise ValueError('единственный абзац ячейки таблицы')
-        _drop_bookmarks(a); par.remove(a)
+        _take_toc(a); _drop_bookmarks(a); par.remove(a)
         return None, 'удалён: ' + v.texts[i][:60], [], [a]
     if kind == 'delete_hidden_before':
         nb = _nbr(d); par = a.getparent(); k = list(par).index(a); gone = []
         while k > 0:
             q = list(par)[k - 1]
+            if q.tag in (W + 'bookmarkStart', W + 'bookmarkEnd'): k -= 1; continue   # закладки между абзацами на уровне тела не мешают (ДП-Б1.027-02)
             if q.tag != W + 'p' or not pynum.is_hidden_empty(q) or not (nb is not None and nb.numpr(q)): break
             if q.find(W + 'pPr/' + W + 'sectPr') is not None: break
             gone.append(q); k -= 1
@@ -260,6 +345,31 @@ def _do(d, n, op):
             for bm in [c for c in q if c.tag in (W + 'bookmarkStart', W + 'bookmarkEnd')]: a.insert(pos, bm); pos += 1
             par.remove(q)
         return None, f'удалено скрытых пустых нумерованных абзацев: {len(gone)}', [a], gone
+    if kind == 'unnumber':   # снять нумерацию стиля у абзаца (numId=0): абзац остаётся текстом без номера
+        np_ = OxmlElement('w:numPr')
+        e = OxmlElement('w:ilvl'); e.set(qn('w:val'), '0'); np_.append(e)
+        e = OxmlElement('w:numId'); e.set(qn('w:val'), '0'); np_.append(e)
+        backup = [copy.deepcopy(ch) for ch in a]
+        _put_numpr(a, np_)
+        nb_ = _nbr(d)
+        if nb_ is not None and nb_.numpr(a):   # откат: абзац возвращается как был (validator 10.10)
+            for ch in list(a): a.remove(ch)
+            for ch in backup: a.append(ch)
+            raise ValueError('нумерация не снята')
+        return None, 'нумерация снята: ' + v.texts[i][:60], [a], []
+    if kind == 'delete_table':   # таблица целиком; якорь — текст первой ячейки
+        tc = a.getparent()
+        tbl = tc.getparent().getparent() if tc is not None and tc.tag == W + 'tc' else None
+        if tbl is None or tbl.tag != W + 'tbl': raise ValueError('якорь не в ячейке таблицы')
+        if next(tbl.iter(W + 'p'), None) is not a: raise ValueError('якорь — не первый абзац таблицы (нужен текст первой ячейки)')
+        par = tbl.getparent(); nxt = tbl.getnext()
+        if par.tag == W + 'tc' and (nxt is None or nxt.tag != W + 'p'): raise ValueError('таблица последняя в ячейке: после неё нет абзаца')
+        if nxt is not None and nxt.tag == W + 'sectPr' and tbl.getprevious() is None: raise ValueError('таблица единственная в теле')
+        gone = list(tbl.iter(W + 'p'))
+        if any(q.find(W + 'pPr/' + W + 'sectPr') is not None for q in gone): raise ValueError('в таблице разрыв раздела')
+        for q in gone: _drop_bookmarks(q)
+        par.remove(tbl)
+        return None, f'удалена таблица ({len(gone)} абзацев): ' + v.texts[i][:50], [], gone
     body = (text or '').strip()
     if not num:   # номер набран в начале text: обрабатывается как number
         m = LEADNUM.match(body)
@@ -282,6 +392,7 @@ def _do(d, n, op):
             if m and not PL.delete_chars(p, 0, m.end())[0]: raise ValueError('граница прогона: нельзя снять набранный номер')
             name = None
         if kind != 'set_number': _unhide(p)
+        if kind != 'set_number' and PENDING_TOC and len(body) <= 250: _give_toc(p)   # заголовок удалён и вставлен заново: закладки _Toc переходят к новому
         if num: info += '; ' + _place_number(d, p, str(num))
     except Exception:
         if backup is None:
@@ -351,6 +462,7 @@ def apply(od, patch, sd, part=None, srcs=None, ref_pdf=None):
         elif not op.get('part'): rep['skipped'].append([op, f'нет поля part, документ многочастный ({part})'])
     if not ops: return rep
     d = docx.Document(cd)
+    del PENDING_TOC[:]
     before = _snap(d); touched, deleted = [], []
     for n, op in ops:
         try:

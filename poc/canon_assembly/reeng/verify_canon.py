@@ -46,6 +46,15 @@ def body_paras(paras):
             if len(k) < 4 or _TOC_HEAD.match(paras[ne[j]][1].strip()): continue
             if k in seen: end = j; break
             seen.add(k)
+        # оглавление устарело («на хранении» в оглавлении, «на хранение» в теле — ПР-073-15 ч.2.7): первая строка тела может не совпасть точно,
+        # а совпадёт одна из следующих (конец блока уезжает вглубь тела) — повтор ищется и по началу строки (40 знаков); берётся более ранний
+        seen2, end2 = set(), None
+        for j in range(s + 1, (end if end is not None else (b if b is not None else len(ne)))):
+            k = norm(ne[j])[:40]
+            if len(k) < 30 or _TOC_HEAD.match(paras[ne[j]][1].strip()): continue
+            if k in seen2: end2 = j; break
+            seen2.add(k)
+        if end2 is not None: end = end2
         b = end if end is not None else b
         if b is not None: drop.update(ne[s:b])
     if b is not None:
@@ -72,11 +81,26 @@ def join_heading(lines):
     return out
 
 
+def skip_toc_pages(pages, start):
+    """Оглавление без точек-заполнителей (формы ПР-073-15 ч.2, 2.7: «Приложение 1. …» / «3» на соседних строках) занимает страницы с `start` (нет маркера «1 Цель»):
+    строки такого оглавления в теле канона (body_paras его отбрасывает) не ищутся. Пропускаются подряд идущие страницы оглавления: с заголовком «Содержание»
+    или (после такой) с долей строк «только номер» >= 0.2. Все страницы оглавление — (start, True)."""
+    def is_head(p): return any(_TOC_HEAD.match(l.strip()) for l in p['lines'])
+    def toc_like(p):
+        ls = [l.strip() for l in p['lines'] if l.strip()]
+        return len(ls) >= 10 and sum(1 for l in ls if re.fullmatch(r'\d{1,3}', l)) >= 0.2 * len(ls)
+    i = start
+    if i >= len(pages) or not is_head(pages[i]): return start, False
+    if any(re.match(r'^\s*1\.?\s+[А-ЯЁA-Z]', l.strip()) and not re.search(r'[.…]{3,}|\d\s*$', l.strip()) for l in pages[i]['lines']):
+        return start, False   # на странице оглавления начинается раздел 1 (строка «1 …» без номера страницы): страница — тело (validator 10.10)
+    i += 1
+    while i < len(pages) and toc_like(pages[i]): i += 1
+    return (i, False) if i < len(pages) else (start, True)   # весь эталон — оглавление (ПР-073-15 ч.2): оглавление и есть содержимое, из канона не отбрасывается
+
+
 def verify(doc_dir, canon_text, canon_docx, sources):
     rows = [l.split('\t') for l in open(canon_text, encoding='utf-8', errors='replace').read().split('\n')]
     paras = [(r[2].strip(), r[3]) for r in rows if len(r) >= 4]
-    body = body_paras(paras)   # поиск строк эталона — только в теле (без оглавления)
-    full = P.key(' '.join(n + ' ' + t for n, t in body)); plain = P.key(' '.join(t for n, t in body))
     pages = P.canon_pages(P.ref_pdfs(doc_dir)[0])
     cnt = collections.Counter(k for p in pages for k in {P.key(l) for l in p['lines']})
     head = {k for k, c in cnt.items() if c > 0.3 * len(pages)}
@@ -85,6 +109,9 @@ def verify(doc_dir, canon_text, canon_docx, sources):
     if start is None:   # нет «1 Цель/Назначение/Общие»: «1 Область применения», «РАЗДЕЛ/ЧАСТЬ 1», «Общие положения» не из оглавления; иначе без титула
         start = next((i for i, p in enumerate(pages) if any(re.match(r'^\s*(1\.?\s+ОБЛАСТЬ|(РАЗДЕЛ|ЧАСТЬ|ГЛАВА)\s+1\b|ОБЩИЕ ПОЛОЖЕНИЯ\s*$)', l, re.I)
                       and not re.search(r'[.…]{3,}|\d\s*$', l.strip()) for l in p['lines'])), 1 if len(pages) > 1 else 0)
+    start, all_toc = skip_toc_pages(pages, start)
+    body = paras if all_toc else body_paras(paras)   # поиск строк эталона — только в теле (без оглавления)
+    full = P.key(' '.join(n + ' ' + t for n, t in body)); plain = P.key(' '.join(t for n, t in body))
     L = [(p['label'], l, P.key(P.LIST_MARK.sub('', l))) for p in pages[start:] for l in join_heading(p['lines'])
          if P.key(l) not in head and len(P.key(l)) >= 12 and not P.garbage(l)
          and not re.search(r'Стр\.?\s*/?\s*(page)?\s*\d', l) and not re.search(r'[.…]{5,}\s*\d{1,3}\s*$', l)
@@ -123,13 +150,16 @@ def verify(doc_dir, canon_text, canon_docx, sources):
     dup = [k for k in dup_all if k not in dup_ok]
     nums = [(lab, l) for lab, l, k in L if re.match(r'^\s*\d+(\.\d+)+\.?\s+\S', l)]
     num_bad = [(lab, l) for lab, l in nums if P.key(l) not in full]
+    # решение human 08.10: строка с номером, найденная внутри рисунка/объекта Word (подпись схемы в EMF/OLE), — не неверный номер
+    num_obj = [(lab, l) for lab, l in num_bad if in_blob(l)]
+    num_bad = [(lab, l) for lab, l in num_bad if not in_blob(l)]
     x = zipfile.ZipFile(canon_docx).read('word/document.xml').decode()
     live = len(re.findall(r'<w:numId w:val="(?!0")\d+"', x))
     src = P.key(' '.join(P.docx_text(f) for f in sources if f.endswith('.docx')))
     z0 = [''.join(re.findall(r'<w:t[^>]*>([^<]*)', p)) for p in re.findall(r'<w:p[ >].*?</w:p>', x, re.S) if '<w:numId w:val="0"/>' in p]
     frozen = [t for t in z0 if re.match(r'\s*\d+(\.\d+)+', t) and P.key(t) not in src]
     return {'lines': len(L), 'missing': len(miss_real), 'missing_in_objects': len(miss_obj),
-            'coverage': 1 - len(miss_real) / max(len(L), 1), 'numbered': len(nums), 'numbered_bad': len(num_bad),
+            'coverage': 1 - len(miss_real) / max(len(L), 1), 'numbered': len(nums), 'numbered_bad': len(num_bad), 'numbered_in_objects': len(num_obj),
             'duplicates': len(dup), 'duplicates_explained': len(dup_ok), 'live_numbering': live, 'frozen_numbers': len(frozen),
             'examples_missing': [f'стр.{lab}: {l[:100]}' for lab, l in miss_real[:10]],
             'examples_numbered_bad': [f'стр.{lab}: {l[:100]}' for lab, l in num_bad[:10]],

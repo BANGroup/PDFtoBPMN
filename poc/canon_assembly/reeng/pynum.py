@@ -29,6 +29,7 @@ _PUA = re.compile('[\uf000-\uf0ff]')
 
 def fmt_num(n, f):
     if f in ('decimal', None): return str(n)
+    if f == 'none': return ''   # numFmt none: уровень в тексте ссылки пуст («%2%1.1» при none у уровня 1 -> «1.1»)
     if f == 'decimalZero': return '%02d' % n
     if f in ('lowerLetter', 'upperLetter'):
         s, m = '', n
@@ -197,7 +198,6 @@ class Numbering:
                 if r is None or (r != '0' and il <= int(r) - 1): del c[m]
         f = _val(ld, 'numFmt') or 'decimal'
         lt = _val(ld, 'lvlText') or ''
-        if f == 'none': return ''
         if f == 'bullet': return lt
         legal = ld.find(W + 'isLgl') is not None
 

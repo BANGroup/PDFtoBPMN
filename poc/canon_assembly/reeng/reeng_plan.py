@@ -978,7 +978,7 @@ def plan_doc(ddir, slug, workdir):
                 pj = pages[j]
                 if pj['izm'] != 0 or pj['pdf']: break
                 ul = usable_lines(pj, head)
-                if not ul or not pj['label']: continue
+                if not ul or (not pj['label'] and j != 0): continue   # титульная страница без метки тоже опора (ПР-073-15 ч.2.4: регион начинается со стр.2)
                 A = find_seq(S, ul, aft, True) or find_line(S, ul, aft, True)
                 if A:
                     # конец предыдущей страницы (сноски внизу страницы эталона стоят в потоке базы дальше, в теле раздела) не может лежать
@@ -1016,6 +1016,28 @@ def plan_doc(ddir, slug, workdir):
                 defect('страница без штампа не найдена в базе', 'смысл', f"стр.{pj['label']}", f"нештампованная страница: «{ul[0][:70]}» … в базе Word нет; якорем взята следующая", 'база Word не содержит страницы эталона (GAP базы)')
             if B is None and nextp is None and i1 + 1 < len(pages) and pages[i1 + 1]['izm'] == 0 and any(pages[j]['izm'] == 0 and pages[j]['label'] and usable_lines(pages[j], head) for j in range(i1 + 1, len(pages))):
                 defect('якорь не найден', 'смысл', where, 'после региона нет страницы, найденной в базе', 'база не содержит текста нештампованных страниц'); continue
+        if not service_mode and A and B and prevp and nextp:
+            # строки страницы региона (однозначные в базе) лежат вне вырезаемого диапазона: якорь A попал на другое вхождение повторяющейся строки
+            # (формы с одинаковым концом страниц; ПР-073-15 ч.2.6, стр.20: вырезались приложения 32–40) -> якоря от места строк страницы
+            qs_ = sorted({S.rfind(k_) for ip in range(i0, i1 + 1) for k_ in _ks(usable_lines(pages[ip], head)) if len(k_) >= 12 and 1 <= S.count(k_, aft) <= 2} - {-1})   # <=2: строка есть и в оглавлении базы — берём последнее (тело)
+            expect_ = sum(len(k_) for ip in range(i0, i1 + 1) for k_ in _ks(usable_lines(pages[ip], head)))
+            clu_ = max(([q for q in qs_ if q0 <= q <= q0 + 2 * expect_] for q0 in qs_), key=len, default=[])   # плотная группа строк страницы (одиночные ложные вхождения отбрасываются)
+            wide_ = (B[0] - A[1]) > max(4 * expect_, 600) and len(clu_) >= 1   # вырезается заметно больше страницы: ближайшее к строкам страницы вхождение якоря
+            if (len(clu_) >= 2 and sum(1 for q_ in clu_ if A[1] <= q_ < B[0]) < 0.5 * len(clu_)) or wide_:
+                lo_q, hi_q = clu_[0], clu_[-1]; needle = S[A[0]:A[1]]; ulb = usable_lines(nextp, head); ulp = usable_lines(prevp, head); cands = []
+                p_ = S.find(needle, aft)
+                while p_ != -1:
+                    if p_ + len(needle) <= lo_q: cands.append(p_)
+                    p_ = S.find(needle, p_ + 1)
+                if cands:
+                    p_ = cands[-1]
+                    A2 = extend_anchor(S, ulp, (p_, p_ + len(needle), A[2], A[3]), True)
+                    B2 = find_seq(S, ulb, A2[1], False) or find_line(S, ulb, A2[1], False)
+                    if B2:
+                        B2 = back_extend(S, ulb, B2); B2 = extend_anchor(S, ulb, B2, False); B2 = (max(B2[0], A2[1]), B2[1], B2[2], B2[3])
+                        if A2[1] <= lo_q and B2[0] >= hi_q - 8 and (B2[0] - A2[1]) < (B[0] - A[1]):
+                            reg['anchor_refined'] = {'was': [A[1], B[0]], 'now': [A2[1], B2[0]], 'page_lines': [lo_q, hi_q]}
+                            A, B = A2, B2
         if service_mode:
             a, b = reg['service_anchor']['a'], reg['service_anchor']['b']
         else:
@@ -1047,6 +1069,9 @@ def plan_doc(ddir, slug, workdir):
             A_tail = None
         else:
             A_tail = A
+        if A_tail and kids[a].tag == W + 'p' and kids[a].find('.//' + W + 'txbxContent') is not None and not os.environ.get('G_TXBX_TAIL'):
+            # абзац-якорь несёт надписи (схема): их текст — не бегущий текст страницы, разрезать «хвост» нельзя (ДП-Б1.004-06: терялся блок «(5) Контроль поступивших НБД»)
+            reg['tail_a_txbx'] = True; A_tail = None
         if A_tail and kids[a].tag == W + 'p' and not reg.get('kept_objects_after_anchor'):
             tail_a = keys[a][A[1] - offs[a]:]
             if not re.search(r'[а-яa-z]', tail_a): tail_a = ''

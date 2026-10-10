@@ -97,6 +97,25 @@ def dedupe(workdir, plan, canon_pdf, base_orig):
                 for t in list(p.iter(W + 't')): t.text = ''
             else: p.getparent().remove(p)
             touched.add(src); removed.append({'from': src, 'izm': izm_of.get(src), 'text': tx, 'in_table': tb})
+    if os.environ.get('A3_DEDUPE_SHAPES', '1') == '1':
+        # надписи (схемы): старая редакция схемы в базе остаётся рядом с новой из листа замены (ДП-Б1.004-06: схема процесса, англ. часть); одинаковая по тексту
+        # надпись базы, которой в сборке больше, чем в эталоне, а копия из фрагмента есть, — удаляется (надпись целиком, вместе с обёрткой прогона)
+        shp = collections.defaultdict(list)
+        for pos, (src, p) in enumerate(order):
+            for tb in p.iter(W + 'txbxContent'):
+                anc = list(tb.iterancestors())
+                if any(a.tag == W + 'txbxContent' or a.tag.endswith('}Fallback') for a in anc): continue
+                k = P.key(''.join(t.text or '' for t in tb.iter(W + 't')))
+                if len(k) >= 12: shp[k].append((pos, src, tb))
+        for k, lst in shp.items():
+            want = max(1, pdfk.count(k)); c = len(lst)
+            if c <= want or all(x[1] == 'base' for x in lst): continue
+            nfrag = sum(1 for x in lst if x[1] != 'base')
+            if nfrag < want: continue   # во фрагментах меньше, чем в эталоне: часть копий базы нужна
+            for pos, src, tb in [x for x in lst if x[1] == 'base'][:c - want]:
+                run = next((a for a in tb.iterancestors() if a.tag == W + 'r'), None)
+                if run is None or sum(1 for q in run.iter(W + 'txbxContent') if not any(a.tag.endswith('}Fallback') for a in q.iterancestors()) and not any(a.tag == W + 'txbxContent' for a in q.iterancestors())) != 1: continue
+                run.getparent().remove(run); touched.add('base'); removed.append({'from': 'base', 'izm': None, 'text': k[:70], 'in_table': False, 'shape': True})
     for src in touched:
         if src == 'base': _write(mk, base_root)
         else: _write(os.path.join(workdir, src), frag_root[src])

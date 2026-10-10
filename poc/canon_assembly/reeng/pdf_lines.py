@@ -230,7 +230,10 @@ def _liveify(p, lists):
     txt = ''.join(x for _, x in ptext_runs(p))
     m = re.match(r'\s*(\d{1,3}(?:\.\d{1,3}){1,7})\.?\s+', txt)
     ppr = p.find(W + 'pPr')
-    if not m or (ppr is not None and ppr.find(W + 'numPr') is not None and ppr.find(W + 'numPr/' + W + 'numId').get(qn('w:val')) != '0'): return False
+    if not m: return False
+    if ppr is not None and ppr.find(W + 'numPr') is not None and ppr.find(W + 'numPr/' + W + 'numId').get(qn('w:val')) != '0':
+        # абзац уже в списке (нумерация соседа): набранный номер в тексте дублировал бы живой («6.3 6.3 Текст», КД-РД-Б5.009-01) — убираем его, номер выровняет numfix
+        return delete_chars(p, 0, m.end())[0]
     ok, _ = delete_chars(p, 0, m.end())
     if not ok: return False
     ppr = p.find(W + 'pPr')

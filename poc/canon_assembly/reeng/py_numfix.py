@@ -16,6 +16,36 @@ import refidx, reeng_plan as rp
 from pagediff import key
 
 
+def refidx_locate(RI, k, frm):
+    """RI.locate только для достаточно длинных строк и не дальше 80000 знаков (как в проходе plain)."""
+    if len(k) < 24: return None
+    loc = RI.locate(k, frm)
+    return loc if loc and loc[0] - frm <= 80000 else None
+
+
+def unhide_web(d):
+    """Снимает webHidden в теле вне оглавления: абзац заголовка со скрытым знаком (pPr/rPr/webHidden) сливался со следующим (pynum.hidden_mark),
+    текст прогонов не попадал в канон (РД-Б8.006-06, заголовки прил. 1/3/5; в PDF этот текст есть). Строка оглавления — абзац стиля «toc N»/«Оглавление»,
+    с PAGEREF/гиперссылкой на _Toc или со скрытым хвостом «табуляция + номер страницы»: в них webHidden остаётся (номера страниц в Word-выгрузке не видны).
+    Поле TOC в расчёт не берётся: после сборки его конец бывает потерян. -> число снятых."""
+    toc_sty = {s.get(qn('w:styleId')) for s in d.styles.element.findall(qn('w:style'))
+               if re.match(r'(toc\s*\d|оглавлен|содержани)', (s.find(qn('w:name')).get(qn('w:val')) if s.find(qn('w:name')) is not None else '').lower())}
+    def toc_like(p):
+        ps = p.find(qn('w:pPr') + '/' + qn('w:pStyle'))
+        if ps is not None and ps.get(qn('w:val')) in toc_sty: return True
+        if any(re.match(r'\s*PAGEREF\b', t.text or '') for t in p.iter(qn('w:instrText'))): return True
+        if any((h.get(qn('w:anchor')) or '').startswith('_Toc') for h in p.iter(qn('w:hyperlink'))): return True
+        for r in p.iter(qn('w:r')):
+            if r.find(qn('w:rPr') + '/' + qn('w:webHidden')) is not None and (r.find(qn('w:tab')) is not None or re.fullmatch(r'\s*\d{1,4}\s*', ''.join(t.text or '' for t in r.iter(qn('w:t'))))):
+                return True
+        return False
+    n = 0
+    for p in list(d.element.body.iter(qn('w:p'))):
+        if p.find('.//' + qn('w:webHidden')) is None or toc_like(p): continue
+        for el in list(p.iter(qn('w:webHidden'))): el.getparent().remove(el); n += 1
+    return n
+
+
 def fix_once(d, RI):
     """Один проход numfix.fix на XML: ListString (truth) считается pynum по текущему дереву, а не Word. d — python-docx Document (правится на месте)."""
     numroot = d.part.numbering_part.element
@@ -33,9 +63,9 @@ def fix_once(d, RI):
             paras.append((ki, pi, p))
             if p in byel: truth[(ki, pi)] = byel[p] if re.search(r'[0-9A-Za-zА-Яа-я]', byel[p]) else None
     plain = lambda p: ''.join(t.text or '' for t in p.iter(qn('w:t')))
-    hk = key(hl); pstart = 0
+    hk = key(hl); pstart = 0 if hk else len(paras)   # начало содержания в эталоне не найдено («1 ЦЕЛЬ…» без номера в текстовом слое): выравнивание не выполняется (раньше — случайно, пустым абзацем)
     for n, (ki, pi, p) in enumerate(paras):
-        if key(((truth.get((ki, pi)) or '') + ' ' + plain(p))) == hk or key(plain(p)) == key(rp.stripnum(hl)): pstart = n
+        if hk and (key(((truth.get((ki, pi)) or '') + ' ' + plain(p))) == hk or key(plain(p)) == key(rp.stripnum(hl))): pstart = n
     stats = {'numeric': 0, 'with_target': 0, 'mismatch': 0, 'chains': 0, 'unmatched': 0, 'typed_removed': 0, 'residual': 0, 'detail': [], 'unmatched_list': []}
     groups = {}; ptr = 0; lastb = None
     BUL = re.compile(r'^[\-–−‒•·▪■□◦\uf02d\uf0b7\uf0a7\u2022]')
@@ -146,12 +176,14 @@ def fix_once(d, RI):
             if tgt and diff:
                 stats['mismatch'] += 1; stats['detail'].append(['mismatch', e['T'][:40], e['ls'], e['ref']])
                 pv = e['p'].getprevious()
+                while pv is not None and pv.tag in (qn('w:bookmarkStart'), qn('w:bookmarkEnd')) and e['T']: pv = pv.getprevious()   # закладки между абзацами на уровне тела (КД-РГ-180-02)
                 while e['T'] and hidden_empty(pv):   # Word показывает номер скрытого пустого абзаца, а не этого: убираем скрытые (A3), закладки (_Toc…) переносятся в этот абзац
                     ppr_ = e['p'].find(qn('w:pPr')); pos_ = 0 if ppr_ is None else list(e['p']).index(ppr_) + 1
                     for bm in [c for c in pv if c.tag in (qn('w:bookmarkStart'), qn('w:bookmarkEnd'))]:
                         e['p'].insert(pos_, bm); pos_ += 1
                     nxt_pv = pv.getprevious(); pv.getparent().remove(pv); stats['hidden_removed'] = stats.get('hidden_removed', 0) + 1
                     pv = nxt_pv
+                    while pv is not None and pv.tag in (qn('w:bookmarkStart'), qn('w:bookmarkEnd')): pv = pv.getprevious()
                 starts = {}
                 for m_ in range(il + 1):
                     starts[m_] = tgt[m_] if m_ in tgt else (cur.get(m_) if m_ in cur else (lvl_info(nb, e['nid'], m_) or {}).get('start', 1))
@@ -190,7 +222,11 @@ def fix_once(d, RI):
     for n, (ki, pi, p) in enumerate(paras):
         if n < pstart or numpr_of(nb, p): continue
         T = re.sub(r'^[«»„“”"\s]+', '', plain(p)).strip()
-        if not T or re.match(r'\d+(?:\.\d+)*\.?\s', T): continue
+        if not T: continue
+        if re.match(r'\d+(?:\.\d+)*\.?\s', T):   # номер набран текстом: указатель идёт дальше (одинаковые блоки «11.3.3.3 …», «12.3.3.3 …» — ДП-М1.020-06)
+            loc_t = refidx_locate(RI, key(rp.stripnum(T)), ptr2)
+            if loc_t: ptr2 = loc_t[0] + 1
+            continue
         kt = key(T)
         if len(kt) < 24: continue
         loc = RI.locate(kt, ptr2)
@@ -201,6 +237,9 @@ def fix_once(d, RI):
             m = re.match(r'\s*(\d+(?:\.\d+)+)\.?\s+(\S.*)', RI.lines[L0_][1])
             if not m: continue
             rk = key(m.group(2))
+            if L0_ != L:   # номер на предыдущей строке: абзац должен продолжать её текст («4.1 ОБОЗНАЧЕНИЯ» и «Обозначения не применяются.» — разные абзацы)
+                rk = key(' '.join([m.group(2)] + [t for _, t in RI.lines[L0_ + 1:L + 1]]))
+                if not (rk and kt.startswith(rk)): continue
             if rk and (kt.startswith(rk[:24]) or rk.startswith(kt[:24])):
                 parts = [int(x) for x in m.group(1).split('.')]; L0 = L0_; break
         if not parts or not 2 <= len(parts) <= 6: continue
@@ -209,7 +248,7 @@ def fix_once(d, RI):
             hm = re.match(r'\s*(\d+(?:\.\d+)+)\.?\s+(\S.*)', prev)
             # заголовок уже есть: набран текстом (bodyk), с автономером (bodyk_ls) или стоит в 3 абзацах перед этим с тем же текстом (номер поправит mismatch-проход)
             tk = key(hm.group(2)) if hm else ''
-            near = bool(tk) and any(key(plain(q)) == tk for _, _, q in paras[max(n - 3, 0):n])
+            near = bool(tk) and any(key(plain(q)) == tk for _, _, q in [r for r in paras[max(n - 12, 0):n] if key(plain(r[2]))][-3:])   # 3 непустых абзаца (между ними бывают пустые скрытые)
             if hm and len(prev) <= 60 and key(prev) not in bodyk and key(prev) not in bodyk_ls and not near:
                 hp = etree.Element(qn('w:p'))
                 rt = etree.SubElement(etree.SubElement(hp, qn('w:r')), qn('w:t')); rt.text = hm.group(2).strip()
@@ -221,6 +260,16 @@ def fix_once(d, RI):
         set_num(p, decimal_num(parts), len(parts) - 1)
         ptr2 = pos + 1
         stats['plain_numbered'] = stats.get('plain_numbered', 0) + 1
+    # скрытый пустой нумерованный абзац слит со следующим набранным «N.N текст» (КД-РД-Б7.005-02, РГ-043-02): Word-выгрузка даёт номер скрытого («1 13.5.5.2.6 …»),
+    # а в эталоне (PDF) номера нет — скрытый абзац убираем, закладки переносим в следующий
+    for pel, hidden in list(getattr(nb, 'merged', {}).items()):
+        if not byel.get(pel) or numpr_of(nb, pel) or not re.match(r'\s*\d+(\.\d+)*\.?\s', plain(pel)): continue
+        ppr_ = pel.find(qn('w:pPr')); pos_ = 0 if ppr_ is None else list(pel).index(ppr_) + 1
+        for hp_ in hidden:
+            if hp_.getparent() is None or not hidden_empty(hp_): continue
+            for bm in [c for c in hp_ if c.tag in (qn('w:bookmarkStart'), qn('w:bookmarkEnd'))]:
+                pel.insert(pos_, bm); pos_ += 1
+            hp_.getparent().remove(hp_); stats['hidden_typed_removed'] = stats.get('hidden_typed_removed', 0) + 1
     mac = numroot.find(qn('w:numIdMacAtCleanup'))
     if mac is not None: numroot.remove(mac); numroot.append(mac)
     return stats
@@ -235,5 +284,5 @@ def run(d, pdf, maxit=int(os.environ.get('NF_MAXIT', '8'))):
     RI = refidx.RefIndex(pdf); log = []
     for it in range(1, maxit + 1):
         st = fix_once(d, RI); st['iteration'] = it; log.append(st)
-        if st['mismatch'] == 0: break
+        if st['mismatch'] == 0 and not st.get('hidden_typed_removed'): break
     return log

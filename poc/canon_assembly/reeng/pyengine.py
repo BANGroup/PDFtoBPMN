@@ -77,6 +77,7 @@ def run_doc(sd, od, wd, doc=None):
         st['assemble'] = lg
         if lg['marker_not_found']: st['warnings'].append('marker not found: ' + ','.join(lg['marker_not_found']))
         if lg['frag_errors']: st['warnings'].append('frag errors: %d' % len(lg['frag_errors']))
+        st['webhidden_removed'] = py_numfix.unhide_web(d)   # webHidden в теле (вне оглавления) прятал заголовки и сливал абзацы
         nlog = py_numfix.run(d, ref_pdf)
         import ooxml_check as _oc
         st['bad_href_removed'] = _oc.fix_bad_href(d)   # r:href VML-картинки после слияния указывал на header -> Word: «Файл поврежден»

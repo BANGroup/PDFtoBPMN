@@ -106,13 +106,16 @@ def verify(doc_dir, canon_text, canon_docx, sources):
     dup = [k for k in over if k not in ok_dup]
     nums = [(lab, l) for lab, l, k in L if re.match(r'^\s*\d+(\.\d+)+\.?\s+\S', l)]
     num_bad = [(lab, l) for lab, l in nums if P.key(l) not in full]
+    # решение human 08.10: строка с номером, найденная внутри рисунка/объекта Word (подпись схемы в EMF/OLE), — не неверный номер
+    num_obj = [(lab, l) for lab, l in num_bad if in_obj(l)]
+    num_bad = [(lab, l) for lab, l in num_bad if not in_obj(l)]
     x = zipfile.ZipFile(canon_docx).read('word/document.xml').decode()
     live = len(re.findall(r'<w:numId w:val="(?!0")\d+"', x))
     src = P.key(' '.join(P.docx_text(f) for f in sources if f.endswith('.docx')))
     z0 = [''.join(re.findall(r'<w:t[^>]*>([^<]*)', p)) for p in re.findall(r'<w:p[ >].*?</w:p>', x, re.S) if '<w:numId w:val="0"/>' in p]
     frozen = [t for t in z0 if re.match(r'\s*\d+(\.\d+)+', t) and P.key(t) not in src]
     return {'lines': len(L), 'missing': len(miss_real), 'missing_in_objects': len(miss_obj),
-            'numbered': len(nums), 'numbered_bad': len(num_bad), 'duplicates': len(dup), 'duplicates_explained': len(ok_dup),
+            'numbered': len(nums), 'numbered_bad': len(num_bad), 'numbered_in_objects': len(num_obj), 'duplicates': len(dup), 'duplicates_explained': len(ok_dup),
             'live_numbering': live, 'frozen_numbers': len(frozen),
             'examples_missing': [f'стр.{lab}: {l[:100]}' for lab, l in miss_real[:10]],
             'examples_numbered_bad': [f'стр.{lab}: {l[:100]}' for lab, l in num_bad[:10]]}

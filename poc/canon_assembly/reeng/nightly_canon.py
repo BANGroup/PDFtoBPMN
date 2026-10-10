@@ -257,9 +257,17 @@ def stop_own_word(since):
             if pid.strip().isdigit(): subprocess.run(['powershell.exe', '-NoProfile', '-Command', f"Get-Process -Id {pid.strip()} -ErrorAction SilentlyContinue | Where-Object {{ $_.ProcessName -eq 'WINWORD' }} | Stop-Process -Force"], capture_output=True)   # только WINWORD: номер процесса мог достаться другой программе (validator 06.10)
 
 
-def run_rebuild(docs, run_id):
+def run_rebuild_all(docs, run_id, state):
+    """Документы с canon_source='pdf' (канон из PDF) пересобираются движком pdf, остальные — py (решение human 08.10)."""
+    pdf = [d for d in docs if (state['docs'].get(d) or {}).get('canon_source') == 'pdf']
+    rest = [d for d in docs if d not in pdf]
+    if rest: run_rebuild(rest, run_id)
+    if pdf: run_rebuild(pdf, run_id, engine='pdf')
+
+
+def run_rebuild(docs, run_id, engine=None):
     # шаг 9 (05.10.2026): сборка без Word (py-движок); Word — только проверка открытия готовых (wordopen_check) перед приёмкой
-    cmd = [sys.executable, os.path.join(HERE, 'batch_run.py'), '--run-id', run_id, '--engine', os.environ.get('CANON_ENGINE', 'py'),
+    cmd = [sys.executable, os.path.join(HERE, 'batch_run.py'), '--run-id', run_id, '--engine', engine or os.environ.get('CANON_ENGINE', 'py'),
            '--docs', ','.join(docs), '--redo', ','.join(docs)]
     # новые .doc (листы замены, базы) — разовая конвертация в Word в кэш doc2docx до сборки (py-движок Word не запускает; 07.10:
     # РИ-М1.005-07 упал «нет конвертации .doc»). Корпус только читается: файл копируется во временную папку Windows.
@@ -334,7 +342,7 @@ def main():
     rid = None
     if todo:
         rid = pick_run_id(manifest)
-        run_rebuild(todo, rid)
+        run_rebuild_all(todo, rid, state)
         rows = {r['doc_num']: r for r in csv.DictReader(open(os.path.join(RUNS, rid, 'summary.csv'), encoding='utf-8-sig'), delimiter=';')} if os.path.exists(os.path.join(RUNS, rid, 'summary.csv')) else {}
         chg = {d: ch for d, ch in p['new'] + p['changed'] + p['retry']}
         R += ['## Изменения по документам', '']
@@ -354,6 +362,7 @@ def main():
                 link_live(doc, rid)
                 if os.path.exists(pf): shutil.copy2(pf, os.path.join(LIVE, 'points', doc + '.json'))
                 state['docs'][doc] = {'title': stt['title'], 'files': nf, 'status': r['status'], 'run': rid, 'points': pa, 'skip': pj.get('skip', ''), 'rebuild': False}
+                if canon_source(rid, doc) == 'pdf': state['docs'][doc]['canon_source'] = 'pdf'
             else:
                 lines = doc_report(doc, before, stt, {}, '')
                 fails.append(doc)
@@ -408,6 +417,15 @@ def score(r):
     return (0 if r['status'] == 'ready' else 1, n('missing') + n('numbered_bad') + n('duplicates'))
 
 
+def canon_source(run, doc):
+    """'pdf' — канон собран из текстового слоя PDF (pdf_canon, status.json source='pdf'); иначе 'word'."""
+    for f in [os.path.join(RUNS, run, 'out', doc, 'status.json')] + glob.glob(os.path.join(RUNS, run, 'out', doc, 'part_*', 'status.json')):
+        try:
+            if (jload(f) or {}).get('source') == 'pdf': return 'pdf'
+        except Exception: pass
+    return 'word'
+
+
 def is_py_run(run):
     """Прогон py-движком (сборка без Word): по worker_result/статусу первого документа."""
     p = os.path.join(RUNS, run, 'summary.csv')
@@ -436,6 +454,12 @@ def extra_text(doc, od=None):
     tot, ex = 0, []
     for u in units:
         try:
+            if not os.path.exists(os.path.join(u, 'plan.json')):   # канон из PDF (pdf_canon): плана сборки нет, эталон — PDF документа/части, Word-источников нет
+                m = re.match(r'part_(\d+)$', os.path.basename(u))
+                sdir = os.path.join(LIVE, 'src', doc, '__parts', 'p' + m.group(1)) if m else os.path.join(LIVE, 'src', doc)
+                import pagediff
+                r = verify_extra.check(sdir, os.path.join(u, 'canon_text.txt'), [], pagediff.ref_pdfs(sdir)[0])
+                tot += r['paras_extra']; ex += r['examples'][:3]; continue
             pl = jload(os.path.join(u, 'plan.json')) or {}
             b = pl.get('base_src', '')
             if b.lower().endswith('.doc'): b = b + 'x' if os.path.exists(b + 'x') else ''
@@ -445,6 +469,23 @@ def extra_text(doc, od=None):
             return {'error': f'{os.path.basename(u)}: {type(e).__name__}: {e}'[:200], 'paras_extra': None}
         tot += r['paras_extra']; ex += r['examples'][:3]
     return {'paras_extra': tot, 'examples': ex}
+
+
+def numbers_wrong(doc, od=None):
+    """verify_extra.check_numbers по канону документа в live или в каталоге od прогона (части — по эталону части). None — не удалось."""
+    try:
+        import verify_extra, pagediff
+        od = od or os.path.join(LIVE, 'out', doc)
+        units = [(od, os.path.join(LIVE, 'src', doc))] if os.path.exists(os.path.join(od, 'canon_text.txt')) else \
+            [(u, os.path.join(LIVE, 'src', doc, '__parts', 'p' + u.rsplit('_', 1)[1])) for u in sorted(glob.glob(os.path.join(od, 'part_*')))]
+        if not units: return None
+        tot = 0
+        for u, sd in units:
+            pl = jload(os.path.join(u, 'plan.json')) if os.path.exists(os.path.join(u, 'plan.json')) else {}
+            tot += verify_extra.check_numbers(sd, os.path.join(u, 'canon_text.txt'), (pl or {}).get('canon_pdf') or pagediff.ref_pdfs(sd)[0])['numbers_wrong']
+        return tot
+    except Exception:
+        return None
 
 
 def accept(dry):
@@ -458,18 +499,21 @@ def accept(dry):
         if st.get('status') not in ('ready', 'not_ready') or st.get('failed_key'): continue   # сборка упала — status.csv может хранить старую строку (07.10)
         s_ = stat.get(doc, {}).get('status')
         if s_ not in ('ready', 'ready_core'): continue
-        if is_py_run(st['run']) and not wo.get((st['run'], doc)): wait.append(doc); continue
+        if (is_py_run(st['run']) or st.get('canon_source') == 'pdf') and not wo.get((st['run'], doc)): wait.append(doc); continue
         ex = extra_text(doc)   # правило 1, обратная сторона (08.10): в каноне нет абзацев, которых нет в утверждённом PDF
         if ex.get('paras_extra') is None or ex['paras_extra'] > 0:
             why = 'проверка не выполнена: ' + ex['error'] if ex.get('paras_extra') is None else f"{ex['paras_extra']} абз."
             extra.append(f'{doc} ({why})'); st['review'] = 'лишний текст: ' + why; continue
+        nw = numbers_wrong(doc)   # правило 1: номера всех уровней совпадают с эталоном (08.10: verify проверял только многоуровневые)
+        if nw is None or nw > 0:
+            extra.append(f"{doc} ({'сверка номеров не выполнена' if nw is None else str(nw) + ' неверн. номер.'})"); st['review'] = 'неверные номера'; continue
         st.pop('review', None)
         new.append(doc)
         if not dry: st['accepted'] = datetime.date.today().isoformat(); st['accepted_status'] = s_
     if not dry: state['updated'] = now(); jdump(state, os.path.join(LIVE, 'state.json'))
     tot = sum(1 for s in state['docs'].values() if s.get('accepted'))
     print(f'принято сейчас {len(new)}; всего принятых {tot if not dry else tot + len(new)} из {len(state["docs"])}; ждут проверки открытия в Word {len(wait)}: {", ".join(wait)}'
-          + (f'; не приняты из-за лишнего текста {len(extra)}: {", ".join(extra)}' if extra else ''))
+          + (f'; не приняты (лишний текст / номера) {len(extra)}: {", ".join(extra)}' if extra else ''))
     return wait
 
 
@@ -494,10 +538,13 @@ def adopt(run, docs, dry):
         line = f"{doc}: {old.get('status') if old else '—'} {old_s[1] if old else ''} ({st['run'] if st else '—'}) -> {r['status']} {new_s[1]} ({run})"
         wo = word_opened() if new_s == old_s else {}
         less_extra = False
-        if new_s == old_s and st:   # ничья: берётся сборка с меньшим лишним текстом (правки удалили старую редакцию — 08.10)
+        if new_s == old_s and st and r['status'] in ('ready', 'not_ready'):   # ничья (упавшая сборка не берётся — validator 10.10): берётся сборка с меньшим лишним текстом (правки удалили старую редакцию — 08.10)
             e_old = (extra_text(doc) or {}).get('paras_extra')
             e_new = (extra_text(doc, os.path.join(RUNS, run, 'out', doc)) or {}).get('paras_extra')
             less_extra = e_old is not None and e_new is not None and e_new < e_old
+            if not less_extra and e_old is not None and e_new is not None and e_new <= e_old:   # и неверных номеров меньше (08.10)
+                n_old, n_new = numbers_wrong(doc), numbers_wrong(doc, os.path.join(RUNS, run, 'out', doc))
+                less_extra = n_old is not None and n_new is not None and n_new < n_old
         if new_s > old_s or (new_s == old_s and not less_extra and not (st and not wo.get((st['run'], doc), True) and wo.get((run, doc)))):
             kept.append(line); continue   # при равенстве берётся новая версия, только если старая не прошла проверку в Word, а новая прошла
         pf_new = os.path.join(RUNS, run, 'points', doc + '.json')
@@ -513,6 +560,7 @@ def adopt(run, docs, dry):
         d = sn[doc]
         state['docs'][doc] = {'title': d['title'], 'files': {os.path.relpath(f['path'], d['dir']): [f['sha256'], f['kind'], f['scope']] for f in d['files']},
                               'status': r['status'], 'run': run, 'points': pts_of(pj), 'skip': pj.get('skip', ''), 'rebuild': False}
+        if canon_source(run, doc) == 'pdf': state['docs'][doc]['canon_source'] = 'pdf'   # решение human 08.10: «принят: канон из PDF»
     if not dry:
         state['updated'] = now(); jdump(state, os.path.join(LIVE, 'state.json')); rebuild_summary(state)
     print(f'взято {len(taken)}:'); print('\n'.join('  ' + x for x in taken))

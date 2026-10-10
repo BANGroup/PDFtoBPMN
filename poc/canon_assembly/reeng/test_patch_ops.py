@@ -54,9 +54,17 @@ def test_insert_number_continues_live_list(unit):
     assert d.paragraphs[2].text == 'Новый пункт из PDF.' and d.paragraphs[2]._p.find('.//' + qn('w:numId')).get(qn('w:val')) == str(nid)
     ls = [l for _, l in pynum.list_strings(os.path.join(od, 'canon.docx'))][:4]
     assert ls == ['1', '1.1', '1.2', '1.3']                         # следующий пункт того же списка сдвинулся (допустимо)
-    # номер не сходится с продолжением списка: набирается текстом
+    # номер не сходится с продолжением списка: своя цепочка списка (клон abstractNum со start, счёт от 1.9), не набранный текст
     r = run(unit, [{'op': 'insert_after', 'anchor': TEXTS[1], 'text': 'Другой пункт.', 'number': '1.9'}])
-    assert docx.Document(os.path.join(od, 'canon.docx')).paragraphs[2].text == '1.9 Другой пункт.'
+    assert len(r['applied']) == 1 and 'цепочка' in r['applied'][0]['info'], r
+    assert docx.Document(os.path.join(od, 'canon.docx')).paragraphs[2].text == 'Другой пункт.'
+    assert [l for _, l in pynum.list_strings(os.path.join(od, 'canon.docx'))][2] == '1.9'
+    # и с PATCH_LIST_START=0 — как раньше, текстом
+    os.environ['PATCH_LIST_START'] = '0'
+    try:
+        r = run(unit, [{'op': 'insert_after', 'anchor': TEXTS[1], 'text': 'Третий пункт.', 'number': '1.7'}])
+    finally: del os.environ['PATCH_LIST_START']
+    assert docx.Document(os.path.join(od, 'canon.docx')).paragraphs[2].text == '1.7 Третий пункт.'
 
 
 def test_side_effects_detected():
@@ -214,3 +222,56 @@ def test_stale_by_content_not_by_name(unit):
     assert PO.stale_reasons(sd, patch) == []
     open(os.path.join(sd, 'word', 'base_AB12CD34.docx'), 'wb').write(b'other')
     assert PO.stale_reasons(sd, patch)
+
+
+def test_unnumber(unit):
+    import pynum
+    od, _ = unit; _styled_doc(od)
+    ls = lambda: {pynum.para_text(el): l for el, l in pynum.list_strings(os.path.join(od, 'canon.docx')) if pynum.para_text(el)}
+    assert ls()[TEXTS[1]] != ''                                         # абзац 1 получил номер от стиля
+    r = run(unit, [{'op': 'unnumber', 'anchor': TEXTS[1]}])
+    assert len(r['applied']) == 1 and not r['skipped'], r
+    assert ls()[TEXTS[1]] == '' and TEXTS[1] in texts(od)
+
+
+def _table_doc(od):
+    d = docx.Document(os.path.join(od, 'canon.docx'))
+    t = d.add_table(rows=2, cols=2); t.cell(0, 0).text = 'Старое оглавление раздела'; t.cell(0, 1).text = 'Стр.'
+    t.cell(1, 0).text = 'Пункт'; t.cell(1, 1).text = '3'
+    d.add_paragraph('Абзац после таблицы.')
+    d.save(os.path.join(od, 'canon.docx'))
+
+
+def test_delete_table(unit):
+    od, _ = unit; _table_doc(od)
+    r = run(unit, [{'op': 'delete_table', 'anchor': 'Пункт'}, {'op': 'delete_table', 'anchor': 'Старое оглавление раздела'}])
+    assert len(r['applied']) == 1 and 'первый абзац таблицы' in r['skipped'][0][1], r
+    d = docx.Document(os.path.join(od, 'canon.docx'))
+    assert not d.tables and d.paragraphs[-1].text == 'Абзац после таблицы.'
+    r = run(unit, [{'op': 'delete_table', 'anchor': TEXTS[0]}])
+    assert 'не в ячейке' in r['skipped'][0][1]
+
+
+def test_delete_hidden_before_through_bookmarks(unit):
+    od, _ = unit; _styled_doc(od)
+    d = docx.Document(os.path.join(od, 'canon.docx'))
+    anchor = d.paragraphs[4]._p; hid = anchor.getprevious()
+    from docx.oxml import OxmlElement
+    bm = OxmlElement('w:bookmarkEnd'); bm.set(qn('w:id'), '77'); anchor.addprevious(bm)    # закладка между скрытым и якорем
+    d.save(os.path.join(od, 'canon.docx'))
+    r = run(unit, [{'op': 'delete_hidden_before', 'anchor': TEXTS[3], 'anchor_occurrence': 2}])
+    assert len(r['applied']) == 1 and not r['skipped'], r
+
+
+def test_toc_bookmarks_move_to_new_heading(unit):
+    od, _ = unit
+    d = docx.Document(os.path.join(od, 'canon.docx')); p = d.paragraphs[4]._p
+    from docx.oxml import OxmlElement
+    s_ = OxmlElement('w:bookmarkStart'); s_.set(qn('w:id'), '55'); s_.set(qn('w:name'), '_Toc123'); e_ = OxmlElement('w:bookmarkEnd'); e_.set(qn('w:id'), '55')
+    p.insert(1, s_); p.append(e_); d.save(os.path.join(od, 'canon.docx'))
+    r = run(unit, [{'op': 'delete', 'anchor': TEXTS[4]}, {'op': 'insert_after', 'anchor': TEXTS[1], 'text': 'Новый заголовок.'}])
+    assert len(r['applied']) == 2, r
+    d = docx.Document(os.path.join(od, 'canon.docx'))
+    new = next(p for p in d.paragraphs if p.text == 'Новый заголовок.')._p
+    assert '_Toc123' in [b.get(qn('w:name')) for b in new.iter(qn('w:bookmarkStart'))]
+    assert len([b for b in d.element.iter(qn('w:bookmarkEnd')) if b.get(qn('w:id')) == '55']) == 1

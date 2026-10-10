@@ -86,3 +86,20 @@ def check(doc_dir, canon_text, sources=(), ref_pdf=None):
 if __name__ == '__main__':
     a = sys.argv[1:]
     print(json.dumps(check(a[0], a[1], a[2:]), ensure_ascii=False, indent=1))
+
+
+def check_numbers(doc_dir, canon_text, ref_pdf=None):
+    """Номера всех уровней (правило 1: номера пунктов совпадают с эталоном; verify_canon проверял только «N.N …»).
+    Нумерованный абзац тела канона (не таблица): текст есть в PDF, а связки «номер + текст» нет — номер неверный
+    (одноуровневые «5 ОБЩИЕ ПОЛОЖЕНИЯ», «1. …», номер на чужом абзаце). Сверка разборщика круга 2 (08.10)."""
+    pk = P.key(' '.join(' '.join(p['lines']) for p in P.canon_pages(ref_pdf or P.ref_pdfs(doc_dir)[0])))
+    bad = []
+    for l in open(canon_text, encoding='utf-8', errors='replace').read().split('\n'):
+        r = l.split('\t')
+        if len(r) < 4 or r[1] != '-': continue
+        ls, t = r[2].strip(), r[3].strip()
+        if not re.match(r'^\d+(\.\d+)*\.?$', ls) or len(P.key(t)) < 10: continue
+        kt = P.key(t)[:40]; kl = P.key(ls + ' ' + t)[:40 + len(P.key(ls))]
+        if kl not in pk and kt in pk: bad.append(f'{ls} {t[:90]}')
+    return {'numbers_wrong': len(bad), 'examples': bad[:8]}
+
